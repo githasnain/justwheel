@@ -1,7 +1,7 @@
 // API Configuration
-// Production: https://newwheel.vercel.app/api
+// Production: https://newwheel-8vx8.vercel.app/api
 // Local: http://localhost:3001/api
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://newwheel.vercel.app/api'
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'https://newwheel-8vx8.vercel.app/api'
 
 export const API_ENDPOINTS = {
   SPINS: {

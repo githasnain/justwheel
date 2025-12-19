@@ -1498,7 +1498,10 @@ function App() {
       } catch (error) {
         console.error('Failed to load spin files from backend:', error)
         setSpinFiles([])
-        alert('Failed to load files from server. Please check your internet connection.')
+        // Don't show alert if it's just empty response (no files uploaded yet)
+        if (error.message && !error.message.includes('Cannot connect')) {
+          console.warn('Backend returned error, but continuing with empty files list')
+        }
       } finally {
         setLoadingSpinFiles(false)
       }

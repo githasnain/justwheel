@@ -3,9 +3,15 @@ import { API_ENDPOINTS } from '../config/api'
 // Helper function for API calls
 const apiCall = async (url, options = {}) => {
   try {
+    // Don't set Content-Type for FormData (let browser set it)
+    const headers = {}
+    if (!(options.body instanceof FormData)) {
+      headers['Content-Type'] = 'application/json'
+    }
+    
     const response = await fetch(url, {
       headers: {
-        'Content-Type': 'application/json',
+        ...headers,
         ...options.headers,
       },
       ...options,
@@ -35,6 +41,15 @@ const apiCall = async (url, options = {}) => {
 
     return await response.json()
   } catch (error) {
+    // Handle network errors
+    if (error.name === 'TypeError' && error.message.includes('fetch')) {
+      console.error('Network Error - Backend not reachable:', {
+        url,
+        message: 'Cannot connect to backend server. Please check if backend is running.'
+      })
+      throw new Error('Cannot connect to backend server. Please check your internet connection and ensure the backend is running.')
+    }
+    
     console.error('API Error:', {
       url,
       method: options.method || 'GET',
@@ -43,8 +58,6 @@ const apiCall = async (url, options = {}) => {
       error
     })
     
-    // Don't throw for 500 errors if it's a non-critical operation
-    // Let the calling code handle it
     throw error
   }
 }
