@@ -130,10 +130,8 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
                 staticCtx.restore()
             }
 
-            const shouldShowText = names.length < 500
             const shouldDrawGradient = names.length < 300
             const shouldDrawStrokes = names.length < 500
-            const minSliceAngleForText = names.length > 500 ? 0.01 : 0.001
 
             // Use Path2D for better performance with many segments
             const segmentPaths = []
@@ -174,45 +172,80 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
                 }
             })
 
-            // Draw text (only if needed)
-            if (shouldShowText && sliceAngle >= minSliceAngleForText) {
-                segmentPaths.forEach(({ index, startAngle }) => {
-                    const name = names[index]
-                    const midAngle = startAngle + sliceAngle / 2
-                    
-                    staticCtx.save()
-                    staticCtx.translate(centerX, centerY)
-                    staticCtx.rotate(midAngle)
+            // Draw text - always show, but adjust size and position based on entries
+            segmentPaths.forEach(({ index, startAngle }) => {
+                const name = names[index]
+                const midAngle = startAngle + sliceAngle / 2
+                
+                staticCtx.save()
+                staticCtx.translate(centerX, centerY)
+                staticCtx.rotate(midAngle)
 
-                    staticCtx.textAlign = 'right'
-                    staticCtx.textBaseline = 'middle'
+                staticCtx.textAlign = 'right'
+                staticCtx.textBaseline = 'middle'
 
-                    const bgColor = colors[index % colors.length]
-                    staticCtx.fillStyle = (bgColor === '#efb71d' || bgColor === '#24a643') ? '#000000' : '#FFFFFF'
+                const bgColor = colors[index % colors.length]
+                staticCtx.fillStyle = (bgColor === '#efb71d' || bgColor === '#24a643') ? '#000000' : '#FFFFFF'
 
-                    const textRadius = radius - 20
-                    const arcLength = textRadius * sliceAngle
-                    const isMobile = window.innerWidth < 768
-                    let computedSize = arcLength / (isMobile ? 4.5 : 6)
-                    const minSize = isMobile ? 8 : 10
-                    const maxSize = isMobile ? 42 : 40
-                    let fontSize = Math.max(minSize, Math.min(maxSize, computedSize))
+                const isMobile = window.innerWidth < 768
+                const numEntries = names.length
+                
+                // Calculate font size based on number of entries
+                // More entries = smaller font size
+                let fontSize
+                if (numEntries <= 10) {
+                    // Normal size for few entries
+                    fontSize = isMobile ? 32 : 36
+                } else if (numEntries <= 50) {
+                    // Slightly smaller
+                    fontSize = isMobile ? 24 : 28
+                } else if (numEntries <= 100) {
+                    fontSize = isMobile ? 18 : 22
+                } else if (numEntries <= 200) {
+                    fontSize = isMobile ? 14 : 18
+                } else if (numEntries <= 500) {
+                    fontSize = isMobile ? 11 : 14
+                } else if (numEntries <= 1000) {
+                    fontSize = isMobile ? 9 : 12
+                } else if (numEntries <= 2000) {
+                    fontSize = isMobile ? 7 : 10
+                } else {
+                    // Very small for many entries
+                    fontSize = isMobile ? 6 : 8
+                }
+                
+                // Also consider arc length to prevent text overflow
+                const textRadius = radius - (numEntries > 100 ? 5 : numEntries > 50 ? 8 : 12)
+                const arcLength = textRadius * sliceAngle
+                const maxSizeFromArc = arcLength / (isMobile ? 4 : 5)
+                fontSize = Math.min(fontSize, maxSizeFromArc)
+                
+                // Ensure minimum readable size
+                const minSize = isMobile ? 6 : 8
+                fontSize = Math.max(minSize, fontSize)
 
-                    staticCtx.font = `500 ${fontSize}px "Montserrat", sans-serif`
-                    staticCtx.shadowColor = 'rgba(0,0,0,0.2)'
-                    staticCtx.shadowBlur = 2
-                    staticCtx.shadowOffsetX = 1
-                    staticCtx.shadowOffsetY = 1
+                staticCtx.font = `500 ${fontSize}px "Montserrat", sans-serif`
+                staticCtx.shadowColor = 'rgba(0,0,0,0.2)'
+                staticCtx.shadowBlur = 2
+                staticCtx.shadowOffsetX = 1
+                staticCtx.shadowOffsetY = 1
 
-                    let displayName = name
-                    if (names.length > 500 && name.length > 10) {
-                        displayName = name.substring(0, 10) + '...'
-                    }
+                // Truncate long names based on entries
+                let displayName = name
+                if (numEntries > 500 && name.length > 8) {
+                    displayName = name.substring(0, 8) + '...'
+                } else if (numEntries > 200 && name.length > 12) {
+                    displayName = name.substring(0, 12) + '...'
+                } else if (numEntries > 100 && name.length > 15) {
+                    displayName = name.substring(0, 15) + '...'
+                }
 
-                    staticCtx.fillText(displayName, radius - 25, 0)
-                    staticCtx.restore()
-                })
-            }
+                // Position text at corner (closer to edge when more entries)
+                // More entries = closer to edge (corner)
+                const textPosition = numEntries > 100 ? radius - 5 : numEntries > 50 ? radius - 8 : radius - 12
+                staticCtx.fillText(displayName, textPosition, 0)
+                staticCtx.restore()
+            })
 
             // Draw Center Hub (static, no image rotation)
             const isMobile = window.innerWidth < 768

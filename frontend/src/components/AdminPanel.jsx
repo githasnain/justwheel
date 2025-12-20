@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { FiUpload, FiX, FiFile, FiImage, FiCheck, FiAlertCircle, FiSearch, FiSend, FiLogOut, FiShuffle, FiRefreshCw } from 'react-icons/fi'
 import { parseExcelFile, imageToBase64 } from '../utils/excelParser'
-import { uploadSpinFile, deleteSpinFile, getAdminSpinFiles, checkPassword, toggleSpinFileActive, updatePassword } from '../services/api'
+import { uploadSpinFile, deleteSpinFile, getAdminSpinFiles, getSpinFiles, checkPassword, toggleSpinFileActive, updatePassword } from '../services/api'
 import { getStoredFiles, saveFile, deleteFile, toggleFileActive, checkPassword as checkPasswordLocal, setPassword as setPasswordLocal } from '../utils/storage'
 
 const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
@@ -867,37 +867,56 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
         // Get the file ID from entries (assuming all entries are from same file or get first file)
         const fileIds = [...new Set(entries.map(e => e.fileId).filter(Boolean))]
         if (fileIds.length > 0) {
-          // Load the file from localStorage and pass it to wheel
+          // Load the file from backend API and pass it to wheel
           try {
-            const files = getStoredFiles()
-            // Find the file(s) that contain these entries
-            const relevantFiles = files.filter(f => fileIds.includes(f.id))
-            if (relevantFiles.length > 0) {
-              // Use the first file (or combine if multiple)
-              const fileToLoad = relevantFiles[0]
-              console.log('Publishing file to wheel:', {
-                fileId: fileToLoad.id,
-                filename: fileToLoad.filename || fileToLoad.name,
-                entriesCount: fileToLoad.json_content?.length || 0
-              })
-              onFileUploaded(fileToLoad)
-              // Update success message to indicate file was loaded
-              setSuccess(`${entries.length} entries published to wheel! File loaded.`)
+            const backendFiles = await getSpinFiles()
+            if (backendFiles && Array.isArray(backendFiles)) {
+              // Find the file(s) that contain these entries
+              const relevantFiles = backendFiles.filter(f => fileIds.includes(f.id) && f.active !== false)
+              if (relevantFiles.length > 0) {
+                // Use the first file (or combine if multiple)
+                const fileToLoad = relevantFiles[0]
+                console.log('Publishing file to wheel:', {
+                  fileId: fileToLoad.id,
+                  filename: fileToLoad.filename || fileToLoad.name,
+                  entriesCount: fileToLoad.json_content?.length || 0
+                })
+                onFileUploaded(fileToLoad)
+                // Update success message to indicate file was loaded
+                setSuccess(`${entries.length} entries published to wheel! File loaded.`)
+              } else {
+                // Files not found in backend - this is okay, entries are still published
+                // Only log in debug mode to reduce console noise
+                if (process.env.NODE_ENV === 'development') {
+                  console.debug('No matching files found for fileIds:', fileIds)
+                  console.debug('File not found in backend, but entries are published. User can select file manually.')
+                }
+              }
             } else {
-              console.error('No matching files found for fileIds:', fileIds)
-              // Don't override success message - entries are still published
-              console.warn('File not found in localStorage, but entries are published. User can select file manually.')
+              // No files returned from backend
+              if (process.env.NODE_ENV === 'development') {
+                console.debug('No files returned from backend API')
+              }
             }
           } catch (err) {
-            console.error('Failed to load file for wheel:', err)
-            // Don't override success message - entries are still published
-            console.warn('Error loading file, but entries are published. User can select file manually.')
+            // Error loading file - this is okay, entries are still published
+            // Only log in debug mode to reduce console noise
+            if (process.env.NODE_ENV === 'development') {
+              console.debug('Failed to load file for wheel:', err)
+              console.debug('Error loading file, but entries are published. User can select file manually.')
+            }
           }
         } else {
-          console.warn('No file IDs found in entries - entries are still published')
+          // No file IDs found - this is okay, entries are still published
+          if (process.env.NODE_ENV === 'development') {
+            console.debug('No file IDs found in entries - entries are still published')
+          }
         }
       } else {
-        console.warn('onFileUploaded callback not provided - entries are still published')
+        // Callback not provided - this is okay, entries are still published
+        if (process.env.NODE_ENV === 'development') {
+          console.debug('onFileUploaded callback not provided - entries are still published')
+        }
       }
     } catch (err) {
       console.error('Failed to publish entries:', err)

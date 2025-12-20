@@ -7,12 +7,11 @@ import AdminPanel from './components/AdminPanel'
 import { getSpinFiles } from './services/api'
 
 function App() {
-  const [names, setNames] = useState([
-    'Ali', 'Beatriz', 'Charles', 'Diya', 'Eric', 'Fatima', 'Gabriel', 'Hanna'
-  ])
+  // Initialize names as empty array - will be populated from uploaded file or dummy data
+  const [names, setNames] = useState([])
   const [results, setResults] = useState([])
   const [activeTab, setActiveTab] = useState('entries')
-  const [namesText, setNamesText] = useState('Ali\nBeatriz\nCharles\nDiya\nEric\nFatima\nGabriel\nHanna')
+  const [namesText, setNamesText] = useState('')
   const [showAdvanced, setShowAdvanced] = useState(false)
   const [spinFiles, setSpinFiles] = useState([])
   const [selectedSpinFile, setSelectedSpinFile] = useState(null)
@@ -300,12 +299,6 @@ function App() {
 
   const spinWheel = useCallback(async () => {
     if (isSpinning || names.length === 0) return
-    
-    // Warn if too many entries (performance concern)
-    if (names.length > 2000) {
-      const proceed = window.confirm(`Warning: You have ${names.length} entries. Spinning may be slow. Continue?`)
-      if (!proceed) return
-    }
 
     // Cancel any existing animation
     if (animationFrameRef.current) {
@@ -421,137 +414,75 @@ function App() {
               ticketToIndexMapSample: Object.entries(ticketToIndexMap).slice(0, 10).map(([t, i]) => ({ ticket: t, index: i }))
             })
             
-            // FIRST: Try direct ticket-to-index lookup (fastest and most reliable)
-            if (winnerForThisSpin.ticketNumber && ticketToIndexMap) {
+            // FIRST: Match by NAME (primary method - name-based selection)
+            // Extract base name from "Name (Ticket)" format if needed
+            const winnerNameToMatch = winnerForThisSpin.name
+            let winnerBaseName = winnerNameToMatch
+            const winnerNameMatch = winnerNameToMatch.match(/^(.+?)\s*\(\d+\)$/)
+            if (winnerNameMatch) {
+              winnerBaseName = winnerNameMatch[1].trim()
+            }
+            
+            // Search through names array - match by NAME first
+            if (targetWinnerIndex === null) {
+              for (let i = 0; i < names.length; i++) {
+                const name = names[i]
+                const ticketNumber = nameToTicketMap[name]
+              
+              // Extract base name from "Name (Ticket)" format if needed
+              let baseName = name
+              const nameMatch = name.match(/^(.+?)\s*\(\d+\)$/)
+              if (nameMatch) {
+                baseName = nameMatch[1].trim()
+              }
+              
+              // Match by NAME (case-insensitive) - use FIRST match if multiple entries with same name
+              const nameMatches = baseName.trim().toLowerCase() === winnerBaseName.trim().toLowerCase() ||
+                                  name.trim().toLowerCase() === winnerNameToMatch.trim().toLowerCase()
+              
+              if (nameMatches) {
+                // Found match by name - use first match (if multiple entries with same name, use first one)
+                if (targetWinnerIndex === null) {
+                  targetWinnerIndex = i
+                  console.log('✅ MATCHED by NAME (first match):', { 
+                    i, 
+                    name, 
+                    baseName,
+                    winnerName: winnerNameToMatch,
+                    winnerBaseName,
+                    ticketNumber
+                  })
+                  break // Use first match only
+                }
+              }
+              
+              // Also try matching by winnerId if available (for backward compatibility)
+              if (winnerForThisSpin.winnerId) {
+                const entryId = `${selectedSpinFile?.id || ''}-${i}`
+                if (entryId === winnerForThisSpin.winnerId) {
+                  if (targetWinnerIndex === null) {
+                    targetWinnerIndex = i
+                    console.log('Matched by winnerId (entryId):', { i, name, ticketNumber, winnerId: winnerForThisSpin.winnerId, entryId })
+                    break
+                  }
+                }
+              }
+              }
+            }
+            
+            // Fallback: If name match not found, try ticket number (but name is primary)
+            if (targetWinnerIndex === null && winnerForThisSpin.ticketNumber && ticketToIndexMap) {
               const normalizedWinnerTicket = String(winnerForThisSpin.ticketNumber).trim()
               const directIndex = ticketToIndexMap[normalizedWinnerTicket]
               
               if (directIndex !== undefined && directIndex !== null && directIndex >= 0 && directIndex < names.length) {
                 targetWinnerIndex = directIndex
-                console.log('✅ FAST MATCH by ticketToIndexMap:', {
+                console.log('✅ FALLBACK MATCH by ticketToIndexMap:', {
                   ticket: normalizedWinnerTicket,
                   index: directIndex,
-                  name: names[directIndex]
+                  name: names[directIndex],
+                  note: 'Name match not found, using ticket as fallback'
                 })
-                // Don't break - continue to verify with other methods, but this is the primary match
-              }
-            }
-            
-            // If not found by direct lookup, search through names array
-            if (targetWinnerIndex === null) {
-              for (let i = 0; i < names.length; i++) {
-                const name = names[i]
-                const ticketNumber = nameToTicketMap[name] // Get ticket from mapping (can be undefined)
-              
-              // Log each entry being checked
-              if (i < 5 || (ticketNumber && String(ticketNumber).trim() === String(winnerForThisSpin.ticketNumber || '').trim())) {
-                console.log(`Checking entry ${i}:`, {
-                  name,
-                  ticketNumber,
-                  winnerTicket: winnerForThisSpin.ticketNumber,
-                  ticketMatch: ticketNumber && String(ticketNumber).trim() === String(winnerForThisSpin.ticketNumber || '').trim()
-                })
-              }
-              
-              // Match by winnerId first (most reliable - this is the entry ID)
-              if (winnerForThisSpin.winnerId) {
-                // winnerId can be entry.id format like "file-id-123"
-                // Try to match by entry ID format first
-                const entryId = `${selectedSpinFile?.id || ''}-${i}`
-                if (entryId === winnerForThisSpin.winnerId) {
-                  targetWinnerIndex = i
-                  console.log('Matched by winnerId (entryId):', { i, name, ticketNumber, winnerId: winnerForThisSpin.winnerId, entryId })
-                  break
-                }
-                // Also try matching by name or ticket if winnerId is stored as name/ticket
-                if (name === winnerForThisSpin.winnerId || 
-                    ticketNumber === winnerForThisSpin.winnerId ||
-                    String(name) === String(winnerForThisSpin.winnerId) ||
-                    String(ticketNumber) === String(winnerForThisSpin.winnerId)) {
-                  targetWinnerIndex = i
-                  console.log('Matched by winnerId (name/ticket):', { i, name, ticketNumber, winnerId: winnerForThisSpin.winnerId })
-                  break
-                }
-              }
-              
-              // Match by ticket number FIRST (most reliable for unique identification)
-              // Ticket number is unique, so if it matches, that's the correct entry
-              if (winnerForThisSpin.ticketNumber && ticketNumber !== undefined && ticketNumber !== null && ticketNumber !== '') {
-                const normalizedTicket = String(ticketNumber).trim()
-                const normalizedWinnerTicket = String(winnerForThisSpin.ticketNumber).trim()
-                const ticketMatch = normalizedTicket === normalizedWinnerTicket
-                
-                if (ticketMatch) {
-                  // Ticket matches - this is the correct entry (ticket is unique)
-                  // Also verify name matches if both are available (for extra safety, but ticket is primary)
-                  if (winnerForThisSpin.name && name) {
-                    const nameMatch = String(name).trim().toLowerCase() === String(winnerForThisSpin.name).trim().toLowerCase()
-                    if (nameMatch) {
-                      // Both ticket and name match - perfect match
-                      targetWinnerIndex = i
-                      console.log('✅ PERFECT MATCH by ticket AND name:', { 
-                        i, 
-                        name, 
-                        ticketNumber: normalizedTicket, 
-                        winnerName: winnerForThisSpin.name,
-                        winnerTicket: normalizedWinnerTicket 
-                      })
-                      break
-                    } else {
-                      // Ticket matches but name differs - still use it (ticket is unique identifier)
-                      console.warn('⚠️ Ticket matches but name differs - using ticket match:', {
-                        name,
-                        ticketNumber: normalizedTicket,
-                        winnerName: winnerForThisSpin.name,
-                        winnerTicket: normalizedWinnerTicket
-                      })
-                      targetWinnerIndex = i
-                      console.log('✅ MATCHED by ticket (name differs but ticket is unique):', { 
-                        i, 
-                        name, 
-                        ticketNumber: normalizedTicket, 
-                        winnerTicket: normalizedWinnerTicket 
-                      })
-                      break
-                    }
-                  } else {
-                    // Only ticket available - use it (ticket is unique)
-                    targetWinnerIndex = i
-                    console.log('✅ MATCHED by ticket only:', { 
-                      i, 
-                      name, 
-                      ticketNumber: normalizedTicket, 
-                      winnerTicket: normalizedWinnerTicket 
-                    })
-                    break
-                  }
-                }
-              }
-              
-              // Fallback: If no ticket, match by name (but this is less reliable and may match multiple entries)
-              if (targetWinnerIndex === null && winnerForThisSpin.name && name && !winnerForThisSpin.ticketNumber) {
-                const nameMatch = String(name).trim().toLowerCase() === String(winnerForThisSpin.name).trim().toLowerCase()
-                if (nameMatch) {
-                  // Only use if no ticket was provided (fallback case)
-                  targetWinnerIndex = i
-                  console.log('Matched by name only (no ticket available - WARNING: may match multiple entries):', { 
-                    i, 
-                    name, 
-                    winnerName: winnerForThisSpin.name 
-                  })
-                  // Don't break here - continue to find better match with ticket
-                }
-              }
-              
-              // Fallback: match by fixedWinnerForSpin string
-              if (fixedWinnerForSpin) {
-                if (String(name) === String(fixedWinnerForSpin) ||
-                    String(ticketNumber) === String(fixedWinnerForSpin)) {
-                  targetWinnerIndex = i
-                  console.log('Matched by fixedWinnerForSpin:', { i, name, ticketNumber, fixedWinnerForSpin })
-                  break
-                }
-              }
               }
             }
             
@@ -1201,9 +1132,20 @@ function App() {
               finalWinnerIndex = selectedDisplayedIndex % names.length
               winnerName = names[finalWinnerIndex]
             }
-            // Get ticket from mapping - ONLY use actual ticket number, never fallback to name
+            // Get ticket from mapping first
             winnerTicket = nameToTicketMap[winnerName]
-            // Don't use name as fallback - if no ticket, leave undefined
+            
+            // If no ticket from mapping, try to extract from name format "Name (Ticket)"
+            if (!winnerTicket || String(winnerTicket).trim() === '') {
+              const nameTicketMatch = winnerName.match(/^(.+?)\s*\((\d+)\)$/)
+              if (nameTicketMatch) {
+                winnerTicket = nameTicketMatch[2]
+                console.log('✅ Ticket extracted from name format for random winner:', {
+                  name: winnerName,
+                  ticket: winnerTicket
+                })
+              }
+            }
             
             if (shouldUseFixedWinner) {
               console.warn('Fixed winner mode but targetWinnerIndex not found:', {
@@ -1594,13 +1536,41 @@ function App() {
             if (currentIndex !== -1) {
               setCurrentFileIndex(currentIndex)
             }
+          } else if (files.length === 0) {
+            // If no files available, set dummy data only if names array is empty
+            setNames(prevNames => {
+              if (prevNames.length === 0) {
+                const dummyNames = ['Ali', 'Beatriz', 'Charles', 'Diya', 'Eric', 'Fatima', 'Gabriel', 'Hanna']
+                setNamesText(dummyNames.join('\n'))
+                return dummyNames
+              }
+              return prevNames
+            })
           }
         } else {
           setSpinFiles([])
+          // If no files, set dummy data only if names array is empty
+          setNames(prevNames => {
+            if (prevNames.length === 0) {
+              const dummyNames = ['Ali', 'Beatriz', 'Charles', 'Diya', 'Eric', 'Fatima', 'Gabriel', 'Hanna']
+              setNamesText(dummyNames.join('\n'))
+              return dummyNames
+            }
+            return prevNames
+          })
         }
       } catch (error) {
         console.error('Failed to load spin files from backend:', error)
         setSpinFiles([])
+        // If error, set dummy data only if names array is empty
+        setNames(prevNames => {
+          if (prevNames.length === 0) {
+            const dummyNames = ['Ali', 'Beatriz', 'Charles', 'Diya', 'Eric', 'Fatima', 'Gabriel', 'Hanna']
+            setNamesText(dummyNames.join('\n'))
+            return dummyNames
+          }
+          return prevNames
+        })
         // Don't show alert if it's just empty response (no files uploaded yet)
         if (error.message && !error.message.includes('Cannot connect')) {
           console.warn('Backend returned error, but continuing with empty files list')
@@ -1739,10 +1709,7 @@ function App() {
     // Extract names from json_content and store mapping for winner matching
     if (spinFile.json_content && Array.isArray(spinFile.json_content)) {
       console.log('✅ Processing json_content array with', spinFile.json_content.length, 'entries')
-      // Warn if too many entries
-      if (spinFile.json_content.length > 2000) {
-        alert(`Warning: This file has ${spinFile.json_content.length} entries. For best performance, consider limiting to 2000 entries.`)
-      }
+      // No warning - allow all entries
       
       // Debug: Log first item to see structure
       if (spinFile.json_content.length > 0) {
@@ -1796,15 +1763,52 @@ function App() {
         
         // If item is an object, try to find a meaningful value
         if (typeof item === 'object' && item !== null) {
-          // Get ticket number first - try multiple field names
-          const ticketNumber = item['Ticket Number'] || item['ticket number'] || item['ticketNumber'] || item['Ticket Number'] || item['Ticket'] || item['ticket'] || ''
+          // Get ticket number first - try multiple field names and variations
+          // Try common variations of ticket number field names
+          let ticketNumber = ''
+          const allKeys = Object.keys(item)
+          
+          // Try exact matches first
+          ticketNumber = item['Ticket Number'] || 
+                        item['ticket number'] || 
+                        item['ticketNumber'] || 
+                        item['Ticket'] || 
+                        item['ticket'] ||
+                        item['Ticket No'] ||
+                        item['ticket no'] ||
+                        item['TicketNo'] ||
+                        item['Ticket #'] ||
+                        item['ticket #'] ||
+                        item['Ticket#'] ||
+                        item['Ticket ID'] ||
+                        item['ticket id'] ||
+                        item['TicketId'] ||
+                        ''
+          
+          // If not found, search through all keys for ticket-related fields (case-insensitive)
+          if (!ticketNumber || String(ticketNumber).trim() === '') {
+            for (const key of allKeys) {
+              const keyLower = key.toLowerCase().trim()
+              // Check if key contains "ticket"
+              if (keyLower.includes('ticket')) {
+                const value = item[key]
+                if (value && String(value).trim() !== '') {
+                  ticketNumber = value
+                  console.log(`Found ticket number in field "${key}":`, ticketNumber)
+                  break
+                }
+              }
+            }
+          }
           
           // Debug: Log ticket number extraction for first few items
           if (index < 5) {
             console.log('🎫 Ticket extraction:', {
               index,
               ticketNumber,
-              itemKeys: Object.keys(item),
+              ticketNumberFound: ticketNumber && String(ticketNumber).trim() !== '',
+              itemKeys: allKeys,
+              allItemValues: Object.entries(item).slice(0, 5).map(([k, v]) => ({ key: k, value: v })),
               firstName: item['First Name'] || item['first name'] || '',
               lastName: item['Last Name'] || item['last name'] || ''
             })
@@ -1879,16 +1883,37 @@ function App() {
           // CRITICAL: Extract ticket number from ORIGINAL ITEM, not from formatted name
           // The formatted name "Name (324)" might have a different number than actual ticket
           // Try multiple field names to find the actual ticket number
-          const ticketNumber = originalItem['Ticket Number'] || 
-                               originalItem['ticket number'] || 
-                               originalItem['ticketNumber'] || 
-                               originalItem['Ticket Number'] || 
-                               originalItem['Ticket'] || 
-                               originalItem['ticket'] ||
-                               originalItem['Ticket No'] ||
-                               originalItem['ticket no'] ||
-                               originalItem['TicketNo'] ||
-                               ''
+          let ticketNumber = originalItem['Ticket Number'] || 
+                            originalItem['ticket number'] || 
+                            originalItem['ticketNumber'] || 
+                            originalItem['Ticket'] || 
+                            originalItem['ticket'] ||
+                            originalItem['Ticket No'] ||
+                            originalItem['ticket no'] ||
+                            originalItem['TicketNo'] ||
+                            originalItem['Ticket #'] ||
+                            originalItem['ticket #'] ||
+                            originalItem['Ticket#'] ||
+                            originalItem['Ticket ID'] ||
+                            originalItem['ticket id'] ||
+                            originalItem['TicketId'] ||
+                            ''
+          
+          // If not found, search through all keys for ticket-related fields (case-insensitive)
+          if (!ticketNumber || String(ticketNumber).trim() === '') {
+            const allKeys = Object.keys(originalItem)
+            for (const key of allKeys) {
+              const keyLower = key.toLowerCase().trim()
+              // Check if key contains "ticket"
+              if (keyLower.includes('ticket')) {
+                const value = originalItem[key]
+                if (value && String(value).trim() !== '') {
+                  ticketNumber = value
+                  break
+                }
+              }
+            }
+          }
           
           // Debug: Log ticket mapping for entries that match winner name pattern
           const nameMatch = name.match(/^(.+?)\s*\((\d+)\)$/)
@@ -3243,17 +3268,29 @@ function App() {
                 <button className="winner-close-btn" onClick={handleCloseWinner}>×</button>
               </div>
               <div className="winner-content">
-                <div className="winner-name">{winner.name}</div>
-                {winner.ticket && (
-                  <div className="winner-ticket" style={{ 
-                    marginTop: '8px', 
-                    fontSize: '18px', 
-                    color: '#666',
-                    fontWeight: '500'
-                  }}>
-                    Ticket: {winner.ticket}
-                  </div>
-                )}
+                {/* Extract base name if in "Name (Ticket)" format */}
+                {(() => {
+                  const nameMatch = winner.name.match(/^(.+?)\s*\((\d+)\)$/)
+                  const displayName = nameMatch ? nameMatch[1].trim() : winner.name
+                  const ticketFromName = nameMatch ? nameMatch[2] : null
+                  const finalTicket = winner.ticket || ticketFromName
+                  
+                  return (
+                    <>
+                      <div className="winner-name">{displayName}</div>
+                      {finalTicket && (
+                        <div className="winner-ticket" style={{ 
+                          marginTop: '8px', 
+                          fontSize: '18px', 
+                          color: '#666',
+                          fontWeight: '500'
+                        }}>
+                          Ticket: {finalTicket}
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
                 <div className="winner-buttons">
                   <button className="winner-btn close-btn" onClick={handleCloseWinner}>Close</button>
                   <button className="winner-btn remove-btn" onClick={handleRemoveWinner}>Remove</button>
