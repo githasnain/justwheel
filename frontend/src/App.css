@@ -36,6 +36,15 @@ body {
   z-index: 10;
 }
 
+.header-left {
+  display: none; /* Hidden on desktop, shown on mobile */
+}
+
+/* Hide mobile admin button on desktop */
+.mobile-admin-btn {
+  display: none;
+}
+
 .header-right {
   display: flex;
   gap: 8px;
@@ -72,6 +81,7 @@ body {
 .main-content {
   flex: 1;
   display: flex;
+  flex-direction: row; /* Wheel on left, sidebar on right */
   overflow: hidden;
 }
 
@@ -83,11 +93,15 @@ body {
   align-items: center;
   position: relative;
   padding: 40px;
+  /* Wheel positioned on left side, next to sidebar */
+  margin-right: 0;
+  margin-left: 0;
+  min-width: 0; /* Allow flex shrinking */
 }
 
 /* Main Wheel Wrapper - Generic/Mobile First */
 .wheel-wrapper {
-  position: relative;
+  position: relative; /* Ensure pointer is positioned relative to this */
   width: min(850px, 90vw);
   height: min(850px, 90vw);
   max-width: 850px;
@@ -96,6 +110,8 @@ body {
   aspect-ratio: 1;
   /* Ensure arrow isn't clipped if it sticks out */
   overflow: visible;
+  /* Center wheel properly accounting for arrow on right side */
+  margin: 0 auto;
 
   /* Geometry Constants */
   /* Geometry Constants */
@@ -152,9 +168,11 @@ body {
 }
 
 .wheel-pointer {
-  position: absolute;
+  position: absolute; /* Fixed relative to wheel-wrapper */
   top: 50%; /* Center vertically */
-  right: -10px; /* Position at right side, extending outward from wheel edge (3 o'clock position) */
+  /* Use percentage-based positioning that scales with zoom */
+  /* -1.33% extends arrow slightly outward from wheel edge (scales with container) */
+  right: -1.33%; /* Percentage-based: scales with wheel-wrapper size at any zoom level */
   /* Fixed position: Arrow at right side (3 o'clock / 0 degrees) */
   /* Arrow SVG tip is at x=90 (90% from left), pointing right */
   /* Negative right value extends arrow outward from wheel edge */
@@ -165,15 +183,27 @@ body {
   pointer-events: none;
   border: none;
   
-  /* Ensure arrow stays fixed - does NOT rotate with wheel */
+  /* Ensure arrow stays fixed with wheel - moves with wheel-wrapper */
   will-change: auto;
   
-  /* Fixed Size - same on all screens for consistent positioning */
+  /* Fixed pixel size - will scale with wheel-wrapper's inverse scaling */
+  /* This ensures arrow maintains visual size when wheel is scaled to counteract zoom */
   width: 40px !important;
   height: 40px !important;
+  min-width: 40px !important;
+  min-height: 40px !important;
+  max-width: 40px !important;
+  max-height: 40px !important;
   
   /* Smooth transitions for color changes */
   transition: filter 0.2s ease;
+  
+  /* Always positioned relative to wheel-wrapper, not viewport */
+  left: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  box-sizing: border-box !important;
+  display: block !important;
 }
 
 /* Tablet Tweaks */
@@ -185,12 +215,13 @@ body {
 
   .wheel-pointer {
     /* Fixed position at right side (3 o'clock) - arrow points right, extending outward */
+    /* Percentage-based positioning scales with zoom */
     top: 50% !important;
-    right: -10px !important;
+    right: -1.33% !important; /* Scales with container size */
     left: auto !important;
     transform: translateY(-50%) !important;
-    width: 40px !important;
-    height: 40px !important;
+    width: 5.33% !important; /* Scales with container size */
+    height: 5.33% !important; /* Scales with container size */
   }
 }
 
@@ -225,6 +256,7 @@ body {
 /* Right Sidebar */
 .right-sidebar {
   width: 350px;
+  min-width: 350px; /* Fixed width, always visible */
   background-color: rgba(26, 26, 26, 0.95);
   backdrop-filter: blur(10px);
   border-left: 1px solid #3a3a3a;
@@ -232,6 +264,7 @@ body {
   flex-direction: column;
   padding: 0;
   position: relative;
+  flex-shrink: 0; /* Don't shrink, always visible */
 }
 
 .right-sidebar.sidebar-hidden {
@@ -313,11 +346,14 @@ body {
   cursor: pointer;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   font-size: 13px;
   border-radius: 6px;
   transition: background-color 0.2s;
   font-weight: 500;
+  min-height: 36px;
+  height: auto;
 }
 
 .action-btn:hover {
@@ -332,19 +368,7 @@ body {
   padding-right: 10px;
 }
 
-.advanced-checkbox {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: white;
-  cursor: pointer;
-  margin-left: auto;
-}
-
-.advanced-checkbox input {
-  cursor: pointer;
-}
+/* Advanced checkbox removed */
 
 .entries-list {
   flex: 1;
@@ -528,20 +552,77 @@ body {
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  /* Ensure popup aligns perfectly with wheel center */
+  /* Wheel container is flex: 1, so wheel is centered in remaining space after sidebar */
+  /* Popup should match this centering - using same flexbox approach */
 }
 
 .winner-popup {
   background-color: #1a1a1a;
   border-radius: 12px;
-  width: 1000px;
-  max-width: 90vw;
+  width: min(600px, 70vw);
+  max-width: 600px;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
+/* Match winner popup width to wheel wrapper width at all breakpoints - smaller size */
+/* Mobile First - max-width 480px */
+@media (max-width: 480px) {
+  .winner-popup {
+    width: 85%;
+    max-width: 250px;
+  }
+}
+
+/* max-width 768px */
+@media (max-width: 768px) {
+  .winner-popup {
+    width: 85%;
+    max-width: 320px;
+  }
+}
+
+/* max-width 992px */
+@media (max-width: 992px) {
+  .winner-popup {
+    width: 80%;
+    max-width: 400px;
+  }
+}
+
+/* Desktop breakpoints */
+@media (min-width: 1024px) {
+  .winner-popup {
+    width: 450px;
+    max-width: 450px;
+  }
+}
+
+@media (min-width: 993px) and (max-width: 1200px) {
+  .winner-popup {
+    width: 500px;
+    max-width: 500px;
+  }
+}
+
+@media (min-width: 1201px) and (max-width: 1400px) {
+  .winner-popup {
+    width: 550px;
+    max-width: 550px;
+  }
+}
+
+@media (min-width: 1401px) {
+  .winner-popup {
+    width: 600px;
+    max-width: 600px;
+  }
+}
+
 .winner-header {
   background-color: rgb(239, 68, 68);
-  padding: 15px 20px;
+  padding: 12px 16px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -550,7 +631,7 @@ body {
 .winner-header h2 {
   margin: 0;
   color: black;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 500;
 }
 
@@ -558,11 +639,11 @@ body {
   background: transparent;
   border: none;
   color: black;
-  font-size: 28px;
+  font-size: 24px;
   cursor: pointer;
   padding: 0;
-  width: 30px;
-  height: 30px;
+  width: 26px;
+  height: 26px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -575,15 +656,15 @@ body {
 }
 
 .winner-content {
-  padding: 20px 20px;
+  padding: 16px 20px;
   text-align: center;
 }
 
 .winner-name {
-  font-size: 48px;
+  font-size: 36px;
   font-weight: 500;
   color: white;
-  margin-bottom: 15px;
+  margin-bottom: 12px;
   text-transform: capitalize;
   font-family: 'Quicksand', sans-serif;
 }
@@ -595,14 +676,14 @@ body {
 }
 
 .winner-btn {
-  padding: 12px 24px;
+  padding: 10px 20px;
   border: none;
   border-radius: 6px;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
   cursor: pointer;
   transition: all 0.2s;
-  min-width: 80px;
+  min-width: 70px;
 }
 
 .winner-btn.close-btn {
@@ -617,12 +698,75 @@ body {
 .winner-popup .winner-btn.remove-btn {
   background-color: #2563eb !important;
   color: white !important;
-  font-size: 14px !important;
-  padding: 12px 24px !important;
+  font-size: 13px !important;
+  padding: 10px 20px !important;
   width: auto !important;
   height: auto !important;
   line-height: normal !important;
   display: inline-block !important;
+}
+
+/* Responsive winner popup - smaller on mobile */
+@media (max-width: 768px) {
+  .winner-header {
+    padding: 10px 14px;
+  }
+
+  .winner-header h2 {
+    font-size: 16px;
+  }
+
+  .winner-close-btn {
+    font-size: 20px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .winner-content {
+    padding: 14px 16px;
+  }
+
+  .winner-name {
+    font-size: 28px;
+    margin-bottom: 10px;
+  }
+
+  .winner-btn {
+    padding: 8px 16px;
+    font-size: 12px;
+    min-width: 60px;
+  }
+}
+
+@media (max-width: 480px) {
+  .winner-header {
+    padding: 8px 12px;
+  }
+
+  .winner-header h2 {
+    font-size: 14px;
+  }
+
+  .winner-close-btn {
+    font-size: 18px;
+    width: 22px;
+    height: 22px;
+  }
+
+  .winner-content {
+    padding: 12px 14px;
+  }
+
+  .winner-name {
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+
+  .winner-btn {
+    padding: 7px 14px;
+    font-size: 11px;
+    min-width: 55px;
+  }
 }
 
 .winner-popup .winner-btn.remove-btn:hover {
@@ -1293,7 +1437,8 @@ body {
   }
 
   .right-sidebar {
-    width: 100%;
+    width: 100% !important;
+    min-width: 100% !important;
     border-left: none;
     border-top: 1px solid #3a3a3a;
     max-height: none;
@@ -1301,12 +1446,185 @@ body {
     min-height: 50vh;
     display: flex;
     flex-direction: column;
+    padding: 0 !important;
+    overflow: hidden;
+  }
+  
+  .sidebar-header,
+  .sidebar-header-hidden {
+    padding: 10px 12px !important;
+    font-size: 14px !important;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  
+  .sidebar-header .tabs {
+    flex-wrap: wrap;
+    gap: 4px;
+  }
+  
+  .tab {
+    padding: 6px 12px !important;
+    font-size: 13px !important;
+  }
+  
+  .hide-checkbox {
+    font-size: 11px !important;
+  }
+  
+  .entries-list {
+    padding: 8px 0 !important;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .names-container {
+    padding: 0 10px !important;
+    gap: 6px;
+  }
+  
+  .name-item {
+    padding: 10px 12px !important;
+    font-size: 16px !important;
   }
 }
 
 @media (max-width: 768px) {
   .wheel-wrapper {
     max-width: 400px;
+  }
+
+  /* Make sidebar actions responsive on mobile */
+  .sidebar-actions {
+    padding: 8px 12px;
+    gap: 6px;
+    flex-wrap: wrap;
+  }
+
+  .action-btn {
+    padding: 6px 12px;
+    font-size: 12px;
+    flex: 1 1 calc(50% - 3px); /* Two buttons per row */
+    min-width: calc(50% - 3px);
+    justify-content: center;
+    min-height: 34px;
+  }
+
+  .action-btn.dropdown {
+    flex: 1 1 100%; /* Full width for dropdown button */
+    min-width: 100%;
+  }
+
+  .action-btn .icon {
+    font-size: 12px;
+  }
+
+  .action-btn span:not(.icon) {
+    font-size: 12px;
+  }
+
+  /* Winners List Modal Responsive */
+  .winners-list-modal {
+    width: 95% !important;
+    max-width: 95% !important;
+    max-height: 90vh !important;
+    margin: 10px !important;
+    border-radius: 12px !important;
+  }
+
+  /* Override inline styles for modal header */
+  .winners-list-modal > div:first-child {
+    padding: 12px 16px !important;
+    flex-wrap: wrap !important;
+  }
+
+  .winners-list-modal h2 {
+    font-size: 18px !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+    word-break: break-word !important;
+  }
+
+  .winners-list-modal h2 svg {
+    font-size: 20px !important;
+    flex-shrink: 0 !important;
+  }
+
+  .winners-list-modal button[title="Close"] {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 24px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Override inline styles for modal content */
+  .winners-list-modal > div:last-child {
+    padding: 12px 16px !important;
+    overflow-y: auto !important;
+    -webkit-overflow-scrolling: touch !important;
+  }
+
+  .winners-list-modal > div:last-child > div {
+    gap: 8px !important;
+  }
+
+  /* Winner item cards */
+  .winners-list-modal > div:last-child > div > div {
+    padding: 12px 16px !important;
+    border-radius: 8px !important;
+    border-width: 1px !important;
+  }
+
+  /* Winner item inner flex container */
+  .winners-list-modal > div:last-child > div > div > div {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 8px !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* Winner name section */
+  .winners-list-modal > div:last-child > div > div > div > div:first-child {
+    width: 100% !important;
+    min-width: 0 !important;
+  }
+
+  /* Name and avatar container */
+  .winners-list-modal > div:last-child > div > div > div > div:first-child > div {
+    gap: 8px !important;
+    margin-bottom: 4px !important;
+    flex-wrap: wrap !important;
+  }
+
+  /* Avatar circle */
+  .winners-list-modal > div:last-child > div > div > div > div:first-child > div > div:first-child {
+    width: 32px !important;
+    height: 32px !important;
+    font-size: 14px !important;
+    flex-shrink: 0 !important;
+  }
+
+  /* Winner name */
+  .winners-list-modal > div:last-child > div > div > div > div:first-child > div > div:last-child > div:first-child {
+    font-size: 16px !important;
+    margin-bottom: 2px !important;
+    word-break: break-word !important;
+    overflow-wrap: break-word !important;
+  }
+
+  /* Ticket number */
+  .winners-list-modal > div:last-child > div > div > div > div:first-child > div > div:last-child > div:last-child {
+    font-size: 12px !important;
+    word-break: break-word !important;
+  }
+
+  /* Timestamp */
+  .winners-list-modal > div:last-child > div > div > div > div:last-child {
+    text-align: left !important;
+    font-size: 11px !important;
+    width: 100% !important;
+    margin-top: 4px !important;
+    word-break: break-word !important;
   }
 
   .wheel-pointer {
@@ -1317,7 +1635,47 @@ body {
   }
 
   .right-sidebar {
-    padding: 15px;
+    padding: 0 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  
+  .sidebar-header,
+  .sidebar-header-hidden {
+    padding: 10px 12px !important;
+    font-size: 13px !important;
+  }
+  
+  .sidebar-header .tabs {
+    gap: 2px;
+  }
+  
+  .tab {
+    padding: 6px 10px !important;
+    font-size: 12px !important;
+  }
+  
+  .sidebar-actions {
+    padding: 8px 10px !important;
+    gap: 6px;
+  }
+  
+  .entries-list {
+    padding: 6px 0 !important;
+  }
+  
+  .names-container {
+    padding: 0 8px !important;
+    gap: 5px;
+  }
+  
+  .name-item {
+    padding: 8px 10px !important;
+    font-size: 14px !important;
+  }
+  
+  .hide-checkbox {
+    font-size: 10px !important;
   }
 
   .add-name-input textarea {
@@ -1326,6 +1684,24 @@ body {
 
   .header {
     padding: 8px 15px;
+    justify-content: space-between;
+  }
+
+  .header-left {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  .header-right {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+  }
+
+  /* Hide desktop admin button on mobile */
+  .desktop-admin-btn {
+    display: none !important;
   }
 
   .header-btn {
@@ -1341,6 +1717,18 @@ body {
     display: none;
   }
 
+  /* Hide some buttons on mobile */
+  .hide-on-mobile {
+    display: none !important;
+  }
+
+  /* Show Admin button text on mobile - use !important to override */
+  .mobile-admin-btn span:not(.icon),
+  button.mobile-admin-btn span {
+    display: inline !important;
+    font-size: 11px;
+  }
+
   .wheel-container {
     padding: 15px;
     background: transparent !important;
@@ -1353,6 +1741,127 @@ body {
 }
 
 @media (max-width: 480px) {
+  /* Smaller buttons on very small screens */
+  .sidebar-actions {
+    padding: 6px 8px !important;
+    gap: 4px;
+  }
+
+  .action-btn {
+    padding: 6px 8px !important;
+    font-size: 11px !important;
+    flex: 1 1 calc(50% - 2px);
+    min-width: calc(50% - 2px);
+    min-height: 32px;
+  }
+
+  .action-btn.dropdown {
+    flex: 1 1 100%;
+    min-width: 100%;
+  }
+
+  .action-btn .icon {
+    font-size: 11px !important;
+  }
+
+  .action-btn span:not(.icon) {
+    font-size: 11px !important;
+  }
+  
+  .right-sidebar {
+    padding: 0 !important;
+    width: 100% !important;
+    min-width: 100% !important;
+  }
+  
+  .sidebar-header,
+  .sidebar-header-hidden {
+    padding: 8px 10px !important;
+    font-size: 12px !important;
+  }
+  
+  .tab {
+    padding: 5px 8px !important;
+    font-size: 11px !important;
+  }
+  
+  .entries-list {
+    padding: 5px 0 !important;
+  }
+  
+  .names-container {
+    padding: 0 6px !important;
+    gap: 4px;
+  }
+  
+  .name-item {
+    padding: 7px 8px !important;
+    font-size: 13px !important;
+  }
+  
+  .hide-checkbox {
+    font-size: 9px !important;
+  }
+
+  /* Winners List Modal - Extra Small Screens */
+  .winners-list-modal {
+    width: 98% !important;
+    max-width: 98% !important;
+    max-height: 95vh !important;
+    margin: 5px !important;
+    border-radius: 12px !important;
+  }
+
+  .winners-list-modal > div:first-child {
+    padding: 10px 12px !important;
+  }
+
+  .winners-list-modal h2 {
+    font-size: 16px !important;
+    gap: 6px !important;
+  }
+
+  .winners-list-modal h2 svg {
+    font-size: 18px !important;
+  }
+
+  .winners-list-modal button[title="Close"] {
+    width: 24px !important;
+    height: 24px !important;
+    font-size: 20px !important;
+  }
+
+  .winners-list-modal > div:last-child {
+    padding: 10px 12px !important;
+  }
+
+  .winners-list-modal > div:last-child > div {
+    gap: 6px !important;
+  }
+
+  .winners-list-modal > div:last-child > div > div {
+    padding: 10px 12px !important;
+    border-radius: 6px !important;
+  }
+
+  .winners-list-modal > div:last-child > div > div > div > div:first-child > div > div:first-child {
+    width: 28px !important;
+    height: 28px !important;
+    font-size: 12px !important;
+  }
+
+  .winners-list-modal > div:last-child > div > div > div > div:first-child > div > div:last-child > div:first-child {
+    font-size: 14px !important;
+  }
+
+  .winners-list-modal > div:last-child > div > div > div > div:first-child > div > div:last-child > div:last-child {
+    font-size: 11px !important;
+  }
+
+  .winners-list-modal > div:last-child > div > div > div > div:last-child {
+    font-size: 10px !important;
+  }
+
   .wheel-wrapper {
     max-width: 300px;
   }
@@ -1375,6 +1884,13 @@ body {
   .header-btn {
     padding: 6px 8px;
   }
+
+  /* Show Admin button text on small mobile - use !important to override */
+  .header-btn.admin-btn span:not(.icon),
+  button.header-btn.admin-btn span {
+    display: inline !important;
+    font-size: 10px;
+  }
   
   /* Remove any black background on mobile */
   .wheel-container {
@@ -1387,8 +1903,21 @@ body {
 }
 
 @media (min-width: 993px) and (max-width: 1200px) {
+  /* Ensure side-by-side layout above 992px */
+  .main-content {
+    flex-direction: row !important;
+    display: flex !important;
+  }
+
   .right-sidebar {
     width: 300px;
+    min-width: 300px;
+    flex-shrink: 0;
+  }
+
+  .wheel-container {
+    flex: 1;
+    min-width: 0;
   }
 
   .wheel-wrapper {
@@ -1397,19 +1926,34 @@ body {
   }
 
   .wheel-pointer {
-    /* Fixed position at right side (3 o'clock) - arrow points right, extending outward */
+    /* Fixed position relative to wheel-wrapper - always stays with wheel */
+    /* Percentage-based positioning scales with zoom */
+    position: absolute !important;
     top: 50% !important;
-    right: -10px !important;
+    right: -1.33% !important; /* Scales with container size */
     left: auto !important;
     transform: translateY(-50%) !important;
-    width: 40px !important;
-    height: 40px !important;
+    width: 5.33% !important; /* Scales with container size */
+    height: 5.33% !important; /* Scales with container size */
   }
 }
 
 @media (min-width: 1201px) and (max-width: 1400px) {
+  /* Ensure side-by-side layout */
+  .main-content {
+    flex-direction: row !important;
+    display: flex !important;
+  }
+
   .right-sidebar {
     width: 330px;
+    min-width: 330px;
+    flex-shrink: 0;
+  }
+
+  .wheel-container {
+    flex: 1;
+    min-width: 0;
   }
 
   .wheel-wrapper {
@@ -1418,19 +1962,34 @@ body {
   }
 
   .wheel-pointer {
-    /* Fixed position at right side (3 o'clock) - arrow points right, extending outward */
+    /* Fixed position relative to wheel-wrapper - always stays with wheel */
+    /* Percentage-based positioning scales with zoom */
+    position: absolute !important;
     top: 50% !important;
-    right: -10px !important;
+    right: -1.33% !important; /* Scales with container size */
     left: auto !important;
     transform: translateY(-50%) !important;
-    width: 40px !important;
-    height: 40px !important;
+    width: 5.33% !important; /* Scales with container size */
+    height: 5.33% !important; /* Scales with container size */
   }
 }
 
 @media (min-width: 1401px) {
+  /* Ensure side-by-side layout */
+  .main-content {
+    flex-direction: row !important;
+    display: flex !important;
+  }
+
   .right-sidebar {
     width: 350px;
+    min-width: 350px;
+    flex-shrink: 0;
+  }
+
+  .wheel-container {
+    flex: 1;
+    min-width: 0;
   }
 
   .wheel-wrapper {
@@ -1439,13 +1998,15 @@ body {
   }
 
   .wheel-pointer {
-    /* Fixed position at right side (3 o'clock) - arrow points right, extending outward */
+    /* Fixed position relative to wheel-wrapper - always stays with wheel */
+    /* Percentage-based positioning scales with zoom */
+    position: absolute !important;
     top: 50% !important;
-    right: -10px !important;
+    right: -1.33% !important; /* Scales with container size */
     left: auto !important;
     transform: translateY(-50%) !important;
-    width: 40px !important;
-    height: 40px !important;
+    width: 5.33% !important; /* Scales with container size */
+    height: 5.33% !important; /* Scales with container size */
   }
 }
 
@@ -1521,9 +2082,10 @@ body {
 
 .wheel-container-fullscreen .wheel-pointer {
   /* Fixed position - same on all screens including fullscreen - arrow tip touches wheel edge */
-  right: 56px !important;
-  width: 40px !important;
-  height: 40px !important;
+  /* Percentage-based positioning scales with zoom */
+  right: -1.33% !important; /* Scales with container size */
+  width: 5.33% !important; /* Scales with container size */
+  height: 5.33% !important; /* Scales with container size */
 }
 
 .wheel-container-fullscreen .wheel {
@@ -1556,6 +2118,158 @@ body {
   top: 0;
 }
 
+/* Admin Panel Mobile Responsive */
+@media (max-width: 768px) {
+  .admin-panel {
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  .admin-panel-login {
+    width: 90%;
+    max-width: 400px;
+  }
+
+  .admin-header {
+    padding: 16px;
+  }
+
+  .admin-header h2 {
+    font-size: 20px;
+  }
+
+  .admin-logout-btn {
+    padding: 8px 16px;
+    font-size: 12px;
+  }
+
+  .admin-content-scroll {
+    padding: 16px;
+    gap: 16px;
+  }
+
+  .admin-section {
+    margin-bottom: 16px;
+  }
+
+  .admin-section-title {
+    font-size: 16px;
+  }
+
+  .admin-section-card {
+    padding: 16px;
+  }
+
+  /* Make grid responsive - single column on mobile */
+  .admin-grid-row {
+    grid-template-columns: 1fr !important;
+    gap: 16px !important;
+  }
+
+  /* Make flex layouts responsive */
+  .admin-section-header-flex {
+    flex-direction: column !important;
+    align-items: flex-start !important;
+    gap: 12px !important;
+  }
+
+  /* Responsive padding for upload rows */
+  .admin-panel div[style*="padding: 20px"] {
+    padding: 12px !important;
+  }
+
+  /* Responsive buttons */
+  .admin-choose-btn,
+  .admin-submit-btn,
+  .admin-cancel-btn {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  /* Show mobile admin button, hide desktop */
+  .mobile-admin-btn {
+    display: flex !important;
+  }
+
+  .desktop-admin-btn {
+    display: none !important;
+  }
+}
+
+@media (max-width: 480px) {
+  .admin-panel {
+    width: 100%;
+  }
+
+  .admin-panel-login {
+    width: 95%;
+    max-width: 350px;
+  }
+
+  .admin-header {
+    padding: 12px;
+  }
+
+  .admin-header h2 {
+    font-size: 18px;
+  }
+
+  .admin-logout-btn {
+    padding: 6px 12px;
+    font-size: 11px;
+  }
+
+  .admin-content-scroll {
+    padding: 12px;
+    gap: 12px;
+  }
+
+  .admin-section {
+    margin-bottom: 12px;
+  }
+
+  .admin-section-title {
+    font-size: 14px;
+  }
+
+  .admin-section-card {
+    padding: 12px;
+  }
+
+  .admin-field {
+    margin-bottom: 16px;
+  }
+
+  .admin-field input[type="text"],
+  .admin-field input[type="password"] {
+    padding: 10px;
+    font-size: 13px;
+  }
+
+  .admin-choose-btn,
+  .admin-submit-btn,
+  .admin-cancel-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  /* Make flex layouts stack on small screens */
+  .admin-panel [style*="display: flex"]:not(.admin-header):not(.admin-logout-btn) {
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  /* Responsive padding for upload rows */
+  .admin-panel [style*="padding: 20px"] {
+    padding: 12px !important;
+  }
+
+  /* Responsive file upload area */
+  .file-upload-area {
+    padding: 20px !important;
+  }
+}
+
 /* Slide-in animation from left */
 .admin-panel-slide {
   transform: translateX(-100%);
@@ -1566,12 +2280,14 @@ body {
   position: fixed;
   left: 50%;
   top: 50%;
-  transform: translate(-50%, -50%);
+  transform: translate(-50%, -50%) !important;
   width: 90%;
   max-width: 500px;
   height: auto;
   max-height: 90vh;
   border-radius: 12px;
+  /* Ensure login screen is always centered, not sliding from left */
+  animation: none !important;
 }
 
 .admin-header {

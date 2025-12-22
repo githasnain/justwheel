@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react'
 import { FiUpload, FiX, FiFile, FiImage, FiCheck, FiAlertCircle, FiSearch, FiSend, FiLogOut, FiShuffle, FiRefreshCw } from 'react-icons/fi'
 import { parseExcelFile, imageToBase64 } from '../utils/excelParser'
 import { uploadSpinFile, deleteSpinFile, getAdminSpinFiles, getSpinFiles, checkPassword, toggleSpinFileActive, updatePassword } from '../services/api'
@@ -40,12 +40,14 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
   })
   const [selectedWinners, setSelectedWinners] = useState([]) // Array of winner IDs mapped to spin numbers: [{spin: 1, winnerId: '...'}, ...]
   const [fixedWinnerSearch, setFixedWinnerSearch] = useState('') // Search query for fixed winners
+  const [debouncedSearch, setDebouncedSearch] = useState('') // Debounced search for performance
   const [isPublishing, setIsPublishing] = useState(false)
   const [isLoadingEntries, setIsLoadingEntries] = useState(false)
   const [maxSpinNumber, setMaxSpinNumber] = useState(5) // Maximum spin number to configure
   const [currentSpinCount, setCurrentSpinCount] = useState(() => {
     return parseInt(localStorage.getItem('spinCount') || '0', 10)
   })
+  const [visibleEntriesLimit, setVisibleEntriesLimit] = useState(100) // Limit entries shown initially for performance
   
   // Password change states
   const [showPasswordChangeModal, setShowPasswordChangeModal] = useState(false)
@@ -60,19 +62,33 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
   const pictureInputRef = useRef(null)
   const panelRef = useRef(null)
 
-  // Slide-in animation on mount
+  // Debounce search input to improve performance
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearch(fixedWinnerSearch)
+      // Reset limit when search changes
+      if (fixedWinnerSearch !== debouncedSearch) {
+        setVisibleEntriesLimit(100)
+      }
+    }, 300) // 300ms delay
+    
+    return () => clearTimeout(timer)
+  }, [fixedWinnerSearch, debouncedSearch])
+
+  // Slide-in animation on mount (only for authenticated panel, not login screen)
   useEffect(() => {
     if (isAuthenticated && panelRef.current) {
       panelRef.current.style.transform = 'translateX(0)'
+    } else if (!isAuthenticated && panelRef.current) {
+      // Reset panel animation when logged out
+      panelRef.current.style.transform = 'translateX(-100%)'
     }
   }, [isAuthenticated])
 
-  // Load entries when authenticated
+  // Load entries when authenticated - optimized with deferred loading
   useEffect(() => {
     if (isAuthenticated) {
-      loadEntries()
-      loadUploadRows()
-      // Load spin mode settings from localStorage
+      // Load lightweight settings first (immediate)
       const savedSpinModes = localStorage.getItem('spinModes')
       if (savedSpinModes) {
         try {
@@ -92,6 +108,7 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
           const winners = JSON.parse(savedWinners)
           // Filter out removed entries from selected winners
           const removedEntries = getRemovedEntries()
+          const normalize = (str) => String(str || '').trim().toLowerCase()
           const filteredWinners = winners.filter(w => {
             const wName = normalize(w.name || '')
             const wTicket = normalize(w.ticketNumber || '')
@@ -109,6 +126,15 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
           console.error('Failed to parse selectedWinners:', e)
         }
       }
+      
+      // Defer heavy operations (entries loading) to avoid blocking UI
+      // Use setTimeout to allow UI to render first
+      const loadTimer = setTimeout(() => {
+        loadEntries()
+        loadUploadRows()
+      }, 50) // Small delay to let UI render first
+      
+      return () => clearTimeout(loadTimer)
     }
   }, [isAuthenticated])
   
@@ -230,14 +256,38 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
     }
   }
   
-  // Delete row
+  // Delete row - Remove file and all its entries from wheel, data preview, and entries list
   const handleDeleteRow = async (id) => {
+    if (!window.confirm('Are you sure you want to delete this file? This will remove all entries from this file from the wheel, data preview, and entries list.')) {
+      return
+    }
+    
     try {
+      // Delete file from backend
       await deleteSpinFile(id)
+      
+      // Remove from uploadRows
       setUploadRows((prev) => prev.filter((row) => row.id !== id))
-      // Reload entries to reflect deletion
+      
+      // Remove entries from data preview that belong to this file
+      setEntries((prevEntries) => prevEntries.filter(entry => entry.fileId !== id))
+      setPublishedEntries((prevPublished) => prevPublished.filter(entry => entry.fileId !== id))
+      
+      // Dispatch event to App.jsx to remove entries from wheel that belong to this file
+      window.dispatchEvent(new CustomEvent('fileDeleted', { 
+        detail: { fileId: id },
+        bubbles: true 
+      }))
+      document.dispatchEvent(new CustomEvent('fileDeleted', { 
+        detail: { fileId: id },
+        bubbles: true 
+      }))
+      
+      // Reload entries to reflect deletion (will filter out deleted file's entries)
       await loadEntries()
-      setSuccess('File deleted successfully!')
+      
+      setSuccess('File deleted successfully! All entries from this file have been removed.')
+      setTimeout(() => setSuccess(''), 5000)
     } catch (error) {
       console.error('Error deleting file:', error)
       setError('Failed to delete file: ' + (error.message || 'Unknown error'))
@@ -977,6 +1027,7 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
   const handleLogout = () => {
     setIsAuthenticated(false)
     setPassword('')
+    setPasswordError('')
     setEntries([])
     setPublishedEntries([])
     setSearchQuery('')
@@ -989,6 +1040,12 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
     setNewPassword('')
     setConfirmPassword('')
     setPasswordChangeError('')
+    // Reset panel animation
+    if (panelRef.current) {
+      panelRef.current.style.transform = ''
+      panelRef.current.style.left = ''
+      panelRef.current.style.top = ''
+    }
     setPasswordChangeSuccess('')
   }
 
@@ -1063,40 +1120,65 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
     setPasswordChangeSuccess('')
   }
 
-  const handleResetAll = () => {
-    const confirmMessage = `Are you sure you want to reset everything?\n\nThis will:\n- Clear all winners list\n- Clear all selected winners\n- Reset spin count to 0\n- Clear removed entries\n- Reset all spin modes\n- Clear wheel data\n\nThis action cannot be undone!`
+  const handleResetAll = async () => {
+    const confirmMessage = `Are you sure you want to reset everything?\n\nThis will:\n- Clear all winners list\n- Clear all selected winners\n- Reset spin count to 0\n- Clear removed entries\n- Reset all spin modes\n- Clear wheel data\n- Clear data preview\n- Clear all uploaded files\n\nThis action cannot be undone!`
     
     if (window.confirm(confirmMessage)) {
-      // Clear winners list from localStorage
-      localStorage.removeItem('winnersList')
-      
-      // Clear selected winners
-      localStorage.removeItem('selectedWinners')
-      setSelectedWinners([])
-      
-      // Reset spin count
-      localStorage.setItem('spinCount', '0')
-      setCurrentSpinCount(0)
-      window.dispatchEvent(new Event('spinCountReset'))
-      
-      // Clear removed entries
-      localStorage.removeItem('removedEntries')
-      
-      // Reset spin modes
-      localStorage.removeItem('spinModes')
-      setSpinModes({})
-      window.dispatchEvent(new Event('spinModeUpdated'))
-      
-      // Dispatch event to clear winners list in App.jsx
-      window.dispatchEvent(new CustomEvent('resetAllWinners'))
-      document.dispatchEvent(new CustomEvent('resetAllWinners'))
-      
-      // Dispatch event to reset wheel
-      window.dispatchEvent(new CustomEvent('resetWheel'))
-      document.dispatchEvent(new CustomEvent('resetWheel'))
-      
-      setSuccess('All data has been reset successfully!')
-      setTimeout(() => setSuccess(''), 5000)
+      try {
+        // Delete all files from backend
+        const backendFiles = await getAdminSpinFiles()
+        if (backendFiles && Array.isArray(backendFiles)) {
+          const deletePromises = backendFiles.map(file => deleteSpinFile(file.id).catch(err => {
+            console.error(`Failed to delete file ${file.id}:`, err)
+            return null // Continue with other deletions even if one fails
+          }))
+          await Promise.all(deletePromises)
+        }
+        
+        // Clear uploadRows (file list in admin panel)
+        setUploadRows([])
+        
+        // Clear winners list from localStorage
+        localStorage.removeItem('winnersList')
+        
+        // Clear selected winners
+        localStorage.removeItem('selectedWinners')
+        setSelectedWinners([])
+        
+        // Reset spin count
+        localStorage.setItem('spinCount', '0')
+        setCurrentSpinCount(0)
+        window.dispatchEvent(new Event('spinCountReset'))
+        
+        // Clear removed entries
+        localStorage.removeItem('removedEntries')
+        
+        // Reset spin modes
+        localStorage.removeItem('spinModes')
+        setSpinModes({})
+        window.dispatchEvent(new Event('spinModeUpdated'))
+        
+        // Clear data preview (entries and published entries)
+        setEntries([])
+        setPublishedEntries([])
+        
+        // Clear search query
+        setSearchQuery('')
+        
+        // Dispatch event to clear winners list in App.jsx
+        window.dispatchEvent(new CustomEvent('resetAllWinners'))
+        document.dispatchEvent(new CustomEvent('resetAllWinners'))
+        
+        // Dispatch event to reset wheel
+        window.dispatchEvent(new CustomEvent('resetWheel'))
+        document.dispatchEvent(new CustomEvent('resetWheel'))
+        
+        setSuccess('All data has been reset successfully! All files have been deleted.')
+        setTimeout(() => setSuccess(''), 5000)
+      } catch (error) {
+        console.error('Error during reset all:', error)
+        setError('Some errors occurred during reset. Please refresh the page.')
+      }
     }
   }
 
@@ -1114,25 +1196,40 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
     )
   })
   
-  // Filter fixed winners based on search
-  const filteredFixedWinners = entries.filter(entry => {
-    if (!fixedWinnerSearch) return true
-    const query = fixedWinnerSearch.toLowerCase()
-    const name = String(entry.name || '').toLowerCase()
-    const ticketNumber = String(entry.ticketNumber || '').toLowerCase()
-    const email = String(entry.email || '').toLowerCase()
-    return (
-      name.includes(query) ||
-      ticketNumber.includes(query) ||
-      email.includes(query)
-    )
-  })
+  // Filter fixed winners based on search - memoized for performance
+  const filteredFixedWinners = useMemo(() => {
+    if (!debouncedSearch) return entries
+    
+    const query = debouncedSearch.toLowerCase()
+    const results = []
+    let count = 0
+    const maxResults = 500 // Limit search results to prevent lag
+    
+    for (const entry of entries) {
+      if (count >= maxResults) break
+      
+      const name = String(entry.name || '').toLowerCase()
+      const ticketNumber = String(entry.ticketNumber || '').toLowerCase()
+      const email = String(entry.email || '').toLowerCase()
+      
+      if (
+        name.includes(query) ||
+        ticketNumber.includes(query) ||
+        email.includes(query)
+      ) {
+        results.push(entry)
+        count++
+      }
+    }
+    
+    return results
+  }, [entries, debouncedSearch])
 
   // Password login screen
   if (!isAuthenticated) {
     return (
       <div className="admin-overlay" onClick={onClose}>
-        <div className="admin-panel admin-panel-login" onClick={(e) => e.stopPropagation()}>
+        <div className="admin-panel admin-panel-login" onClick={(e) => e.stopPropagation()} style={{ transform: 'translate(-50%, -50%)', left: '50%', top: '50%' }}>
           <div className="admin-header">
             <h2>Admin Login</h2>
             <button className="admin-close-btn" onClick={onClose}>
@@ -1186,7 +1283,7 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
         <div className="admin-content-scroll">
           {/* Upload Files Section - Multiple Files */}
           <div className="admin-section">
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <div className="admin-section-header-flex" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
               <h3 className="admin-section-title" style={{ color: '#d82135' }}>Upload Files</h3>
               <button 
                 className="admin-choose-btn"
@@ -1250,7 +1347,7 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
                       File {index + 1}
                     </div>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="admin-grid-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                       {/* File Name */}
                       <div className="admin-field">
                         <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#333' }}>File Name</label>
@@ -1304,7 +1401,7 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
                       </div>
                     </div>
                     
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                    <div className="admin-grid-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
                       {/* Center Image Upload */}
                       <div className="admin-field">
                         <label style={{ display: 'block', marginBottom: '8px', fontWeight: '500', color: '#333' }}>Center Image (for wheel)</label>
@@ -1616,7 +1713,7 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
             </div>
             
             <div style={{ marginBottom: '16px' }}>
-              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#000', fontSize: '14px' }}>
+              <label style={{ display: 'block', marginBottom: '8px', fontWeight: '600', color: '#d82135', fontSize: '15px' }}>
                 Configure Spin Modes (Set mode for each spin):
               </label>
               <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', marginBottom: '12px' }}>
@@ -1703,9 +1800,16 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
                       backgroundColor: 'transparent'
                     }}
                   />
+                  {fixedWinnerSearch !== debouncedSearch && (
+                    <span style={{ fontSize: '11px', color: '#888', marginLeft: '8px' }}>Searching...</span>
+                  )}
                   {fixedWinnerSearch && (
                     <button
-                      onClick={() => setFixedWinnerSearch('')}
+                      onClick={() => {
+                        setFixedWinnerSearch('')
+                        setDebouncedSearch('')
+                        setVisibleEntriesLimit(100) // Reset limit when clearing search
+                      }}
                       style={{
                         background: 'none',
                         border: 'none',
@@ -1794,28 +1898,43 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
                           }}
                         >
                           <option value="">-- Select Winner --</option>
-                          {availableEntries
-                            .filter(entry => {
-                              // Filter by search if provided
-                              if (fixedWinnerSearch) {
-                                const searchLower = fixedWinnerSearch.toLowerCase()
-                                const name = String(entry.name || '').toLowerCase()
-                                const ticketNumber = String(entry.ticketNumber || '').toLowerCase()
-                                const email = String(entry.email || '').toLowerCase()
-                                return (
-                                  name.includes(searchLower) ||
-                                  ticketNumber.includes(searchLower) ||
-                                  email.includes(searchLower)
-                                )
-                              }
-                              return true
-                            })
-                            .map(entry => (
+                          {(() => {
+                            // Limit entries shown for performance (lazy loading)
+                            // Always limit to prevent lag, even when searching
+                            const maxDisplay = debouncedSearch ? 300 : visibleEntriesLimit
+                            const entriesToShow = availableEntries.slice(0, maxDisplay)
+                            
+                            return entriesToShow.map(entry => (
                               <option key={entry.id} value={entry.id} style={{ color: '#000', fontWeight: '500', backgroundColor: '#fff' }}>
                                 {entry.name} {entry.ticketNumber ? `(${entry.ticketNumber})` : ''}
                               </option>
-                            ))}
+                            ))
+                          })()}
                         </select>
+                        {availableEntries.length > visibleEntriesLimit && (
+                          <div style={{ marginTop: '8px', textAlign: 'center' }}>
+                            <button
+                              type="button"
+                              onClick={() => setVisibleEntriesLimit(prev => prev + 100)}
+                              style={{
+                                padding: '6px 12px',
+                                backgroundColor: '#d82135',
+                                color: '#fff',
+                                border: 'none',
+                                borderRadius: '4px',
+                                cursor: 'pointer',
+                                fontSize: '12px',
+                                fontWeight: '500'
+                              }}
+                            >
+                              Load More ({Math.min(100, availableEntries.length - visibleEntriesLimit)} more)
+                            </button>
+                            <div style={{ marginTop: '4px', fontSize: '11px', color: '#666' }}>
+                              Showing {Math.min(visibleEntriesLimit, availableEntries.length)} of {availableEntries.length} entries
+                              {debouncedSearch && availableEntries.length >= 300 && ' (showing first 300 results)'}
+                            </div>
+                          </div>
+                        )}
                         {selectedWinnerForSpin && (
                           <div style={{ marginTop: '6px', fontSize: '13px', color: '#000', fontWeight: '500', padding: '6px', backgroundColor: '#f0f0f0', borderRadius: '4px' }}>
                             Selected: <strong>{selectedWinnerForSpin.name}</strong> {selectedWinnerForSpin.ticketNumber ? `(${selectedWinnerForSpin.ticketNumber})` : ''}

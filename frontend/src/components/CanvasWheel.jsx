@@ -18,13 +18,19 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
         const canvas = canvasRef.current
         if (!canvas) return
 
-        // Use optimized context settings for smooth animation
+        // Use optimized context settings for ultra-smooth animation
         const ctx = canvas.getContext('2d', {
             alpha: true,
-            desynchronized: true, // Better performance for animations
-            willReadFrequently: false,
+            desynchronized: true, // Better performance for animations - allows async rendering
+            willReadFrequently: false, // Optimize for write operations
             powerPreference: 'high-performance' // Use dedicated GPU if available
         })
+        
+        // Enable hardware acceleration hints for smooth rendering
+        if (ctx.imageSmoothingEnabled !== undefined) {
+            ctx.imageSmoothingEnabled = true
+            ctx.imageSmoothingQuality = 'high' // Best quality for smooth rendering
+        }
 
         // Create offscreen canvas for static wheel (wheel without rotation)
         const staticCanvas = document.createElement('canvas')
@@ -191,37 +197,33 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
                 const numEntries = names.length
                 
                 // Calculate font size based on number of entries
-                // More entries = smaller font size
+                // Normal size for entries <= 50, then fixed 5px for entries > 50
                 let fontSize
                 if (numEntries <= 10) {
                     // Normal size for few entries
                     fontSize = isMobile ? 32 : 36
                 } else if (numEntries <= 50) {
-                    // Slightly smaller
+                    // Slightly smaller but still normal
                     fontSize = isMobile ? 24 : 28
-                } else if (numEntries <= 100) {
-                    fontSize = isMobile ? 18 : 22
-                } else if (numEntries <= 200) {
-                    fontSize = isMobile ? 14 : 18
-                } else if (numEntries <= 500) {
-                    fontSize = isMobile ? 11 : 14
-                } else if (numEntries <= 1000) {
-                    fontSize = isMobile ? 9 : 12
-                } else if (numEntries <= 2000) {
-                    fontSize = isMobile ? 7 : 10
                 } else {
-                    // Very small for many entries
-                    fontSize = isMobile ? 6 : 8
+                    // Fixed 5px for all entries > 50
+                    fontSize = 5
                 }
                 
                 // Also consider arc length to prevent text overflow
                 const textRadius = radius - (numEntries > 100 ? 5 : numEntries > 50 ? 8 : 12)
                 const arcLength = textRadius * sliceAngle
                 const maxSizeFromArc = arcLength / (isMobile ? 4 : 5)
-                fontSize = Math.min(fontSize, maxSizeFromArc)
                 
-                // Ensure minimum readable size
-                const minSize = isMobile ? 6 : 8
+                // For entries > 50, keep 5px fixed, but don't exceed arc length
+                if (numEntries > 50) {
+                    fontSize = Math.min(5, maxSizeFromArc)
+                } else {
+                    fontSize = Math.min(fontSize, maxSizeFromArc)
+                }
+                
+                // Ensure minimum readable size (5px for entries > 50, normal minimum for <= 50)
+                const minSize = numEntries > 50 ? 5 : (isMobile ? 6 : 8)
                 fontSize = Math.max(minSize, fontSize)
 
                 staticCtx.font = `500 ${fontSize}px "Montserrat", sans-serif`
@@ -341,9 +343,20 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
         }
 
         // Animation loop - continuously redraw with current rotation
-        // Always draw to ensure visibility - the performance optimization is in the static wheel caching
-        const animate = () => {
-            drawWheel()
+        // Optimized for smooth 60fps rendering - no frame skipping
+        let lastFrameTime = performance.now()
+        const targetFPS = 60
+        const frameInterval = 1000 / targetFPS
+        
+        const animate = (currentTime) => {
+            const elapsed = currentTime - lastFrameTime
+            
+            // Ensure consistent frame rate for smooth animation
+            if (elapsed >= frameInterval) {
+                drawWheel()
+                lastFrameTime = currentTime - (elapsed % frameInterval)
+            }
+            
             animationFrameRef.current = requestAnimationFrame(animate)
         }
 

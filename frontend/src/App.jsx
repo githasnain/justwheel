@@ -12,7 +12,6 @@ function App() {
   const [results, setResults] = useState([])
   const [activeTab, setActiveTab] = useState('entries')
   const [namesText, setNamesText] = useState('')
-  const [showAdvanced, setShowAdvanced] = useState(false)
   const [spinFiles, setSpinFiles] = useState([])
   const [selectedSpinFile, setSelectedSpinFile] = useState(null)
   const [showOpenDropdown, setShowOpenDropdown] = useState(false)
@@ -47,6 +46,8 @@ function App() {
   const [isSidebarHidden, setIsSidebarHidden] = useState(false)
   const [showWinner, setShowWinner] = useState(false)
   const [winner, setWinner] = useState(null)
+  const wheelContainerRef = useRef(null)
+  const [popupPosition, setPopupPosition] = useState({ top: '50%', left: '50%', transform: 'translate(-50%, -50%)' })
   const [spinMode, setSpinMode] = useState(() => localStorage.getItem('spinMode') || 'random') // 'random' or 'fixed' (legacy)
   const [spinModes, setSpinModes] = useState(() => {
     // Per-spin mode configuration: { 1: 'random', 2: 'fixed', 3: 'random', ... }
@@ -109,11 +110,50 @@ function App() {
   const isFrozenRef = useRef(false) // Track if wheel is frozen
   const fixedBatchRef = useRef(null) // Store the batch used for fixed winner rotation
   const randomBatchRef = useRef(null) // Store the batch used for random spin (to ensure consistency)
+  const [browserZoom, setBrowserZoom] = useState(1) // Track browser zoom level
+  const wheelWrapperRef = useRef(null) // Ref for wheel wrapper to apply inverse scaling
   
   // State for displayed names (100 entries at a time)
   const [displayedNames, setDisplayedNames] = useState([])
   // State to track fixed winner name for current spin (so it appears in every batch)
   const [fixedWinnerName, setFixedWinnerName] = useState(null)
+
+  // Detect browser zoom level and apply inverse scaling to keep wheel fixed size
+  useEffect(() => {
+    const detectZoom = () => {
+      // Method: Use a test element to measure actual zoom
+      const testElement = document.createElement('div')
+      testElement.style.width = '100px'
+      testElement.style.position = 'absolute'
+      testElement.style.visibility = 'hidden'
+      testElement.style.top = '-9999px'
+      document.body.appendChild(testElement)
+      const actualWidth = testElement.offsetWidth
+      document.body.removeChild(testElement)
+      const detectedZoom = actualWidth / 100
+      
+      // Apply inverse scaling to wheel-wrapper to maintain fixed visual size
+      if (wheelWrapperRef.current) {
+        const inverseScale = 1 / detectedZoom
+        wheelWrapperRef.current.style.transform = `scale(${inverseScale})`
+        wheelWrapperRef.current.style.transformOrigin = 'center center'
+      }
+    }
+    
+    // Detect zoom on mount and resize
+    detectZoom()
+    
+    // Listen for zoom changes (resize event fires on zoom in most browsers)
+    window.addEventListener('resize', detectZoom)
+    
+    // Also check periodically for zoom changes (some browsers don't fire resize on zoom)
+    const zoomCheckInterval = setInterval(detectZoom, 500)
+    
+    return () => {
+      window.removeEventListener('resize', detectZoom)
+      clearInterval(zoomCheckInterval)
+    }
+  }, [])
 
   // Audio Context for zero-latency synthetic sounds
   const audioContextRef = useRef(null)
@@ -230,8 +270,10 @@ function App() {
       const delta = currentTime - lastTime
       lastTime = currentTime
 
-      // Update finalRotation smoothly (1.5 degrees per 50ms = 30 degrees per second)
-      setFinalRotation(prev => (prev + (1.5 * delta / 50)) % 360)
+      // Update finalRotation smoothly - very slow and smooth for organic, elegant look
+      // Reduced to 0.3 degrees per 50ms = 6 degrees per second (very slow and smooth)
+      // This matches the smooth, organic feel of the spin animation
+      setFinalRotation(prev => (prev + (0.3 * delta / 50)) % 360)
 
       slowRotationFrameRef.current = requestAnimationFrame(animateSlow)
     }
@@ -321,12 +363,12 @@ function App() {
     const startRotation = finalRotation
     let lastTickRotation = startRotation // Track last rotation for sound sync
 
-    // Duration: 11000ms (11s) - Longer spin for "heavy" natural feel
-    const duration = 11000
+    // Duration: 10000ms (10s) - Much slower, organic and elegant spin
+    const duration = 10000
 
-    // Calculate total rotation: 5-8 full rotations (1800-2880 degrees)
-    const minRotations = 5
-    const maxRotations = 8
+    // Calculate total rotation: 3-5 full rotations (1080-1800 degrees) - Reduced for slower, more organic feel
+    const minRotations = 3
+    const maxRotations = 5
     const spins = minRotations + Math.random() * (maxRotations - minRotations)
     const totalRotationDegrees = spins * 360
 
@@ -446,7 +488,7 @@ function App() {
                   targetWinnerIndex = i
                   console.log('✅ MATCHED by NAME (first match):', { 
                     i, 
-                    name, 
+                  name,
                     baseName,
                     winnerName: winnerNameToMatch,
                     winnerBaseName,
@@ -461,10 +503,10 @@ function App() {
                 const entryId = `${selectedSpinFile?.id || ''}-${i}`
                 if (entryId === winnerForThisSpin.winnerId) {
                   if (targetWinnerIndex === null) {
-                    targetWinnerIndex = i
-                    console.log('Matched by winnerId (entryId):', { i, name, ticketNumber, winnerId: winnerForThisSpin.winnerId, entryId })
-                    break
-                  }
+                  targetWinnerIndex = i
+                  console.log('Matched by winnerId (entryId):', { i, name, ticketNumber, winnerId: winnerForThisSpin.winnerId, entryId })
+                  break
+                }
                 }
               }
               }
@@ -472,7 +514,7 @@ function App() {
             
             // Fallback: If name match not found, try ticket number (but name is primary)
             if (targetWinnerIndex === null && winnerForThisSpin.ticketNumber && ticketToIndexMap) {
-              const normalizedWinnerTicket = String(winnerForThisSpin.ticketNumber).trim()
+                const normalizedWinnerTicket = String(winnerForThisSpin.ticketNumber).trim()
               const directIndex = ticketToIndexMap[normalizedWinnerTicket]
               
               if (directIndex !== undefined && directIndex !== null && directIndex >= 0 && directIndex < names.length) {
@@ -784,10 +826,10 @@ function App() {
       // Matched Derivative Piecewise Easing
       // Guarantees smooth velocity transition from Acceleration to Deceleration.
 
-      // Configuration
-      const t1 = 0.20 // Acceleration for 20% of time (approx 2s). Gives a heavy "heave".
-      const p1 = 3    // Cubic acceleration (Heavy start)
-      const p2 = 5    // Quintic deceleration (Extra soft final slowdown)
+      // Configuration - Very slow, organic and natural motion
+      const t1 = 0.30 // Acceleration for 30% of time (longer, gentler acceleration phase)
+      const p1 = 2.0  // Very gentle acceleration (smooth, organic start)
+      const p2 = 7    // Ultra-soft deceleration (very smooth, natural final slowdown)
 
       // Calculate split point (Y) where curves meet to ensure velocity continuity
       // Derivation: V1(t1) = V2(t1) -> solve for Y
@@ -833,20 +875,9 @@ function App() {
         const easedProgress = ease(progress)
         const current = startRotation + (endRotation - startRotation) * easedProgress
         
-        // Throttle updates for many entries to improve performance
-        // Update every frame for smooth animation, but skip some frames for very large lists
-        const shouldUpdate = names.length < 2000 || 
-                            (names.length < 5000 && Math.floor(progress * 100) % 2 === 0) ||
-                            (names.length >= 5000 && Math.floor(progress * 100) % 3 === 0)
-        
-        if (shouldUpdate) {
+        // Always update every frame for smooth, glitch-free animation
+        // No throttling - smooth rotation is priority
             setFinalRotation(current)
-        } else {
-            // Still update occasionally to prevent lag
-            if (Math.floor(progress * 100) % 5 === 0) {
-                setFinalRotation(current)
-            }
-        }
         
         // Robust sync: Play sound every 25 degrees (throttle sound for many entries)
         if (names.length < 2000 && Math.abs(current - lastTickRotation) >= 25) {
@@ -1201,6 +1232,17 @@ function App() {
           // Wait 1 second after wheel stops, then show pop-up
           // Wheel remains frozen during this time and until pop-up is closed
           setTimeout(() => {
+            // Calculate wheel container center position for popup alignment
+            if (wheelContainerRef.current) {
+              const rect = wheelContainerRef.current.getBoundingClientRect()
+              const centerX = rect.left + rect.width / 2
+              const centerY = rect.top + rect.height / 2
+              setPopupPosition({
+                top: `${centerY}px`,
+                left: `${centerX}px`,
+                transform: 'translate(-50%, -50%)'
+              })
+            }
             setShowWinner(true)
           }, 1000)
         }
@@ -1212,7 +1254,8 @@ function App() {
   }, [isSpinning, names, displayedNames, finalRotation, settings.spinTime, selectedSpinFile, spinMode, spinModes, spinCount])
 
   const handleWheelClick = () => {
-    if (!showWinner) {
+    // Prevent clicking when spinning or showing winner, but keep normal cursor
+    if (!isSpinning && !showWinner) {
       spinWheel()
     }
   }
@@ -1350,63 +1393,101 @@ function App() {
       })
       
       // Remove from names array by matching ticket number ONLY
+      // CRITICAL: Only remove ONE entry, even if multiple entries have the same ticket
       let removedCount = 0
+      let finalNames = null // Will hold the final filtered array
+      let removedIndex = -1 // Track which index was removed to prevent multiple removals
       
-      const updatedNames = names.filter((name, index) => {
-        // First try to get ticket from mapping
-        let nameTicket = nameToTicketMap[name]
+      // First, try to find the index of the entry to remove using ticketToIndexMap (fastest)
+      const ticketIndex = ticketToIndexMap[normalizedWinnerTicket]
+      if (ticketIndex !== undefined && ticketIndex >= 0 && ticketIndex < names.length) {
+        // Verify the ticket matches at this index
+        const nameAtIndex = names[ticketIndex]
+        let nameTicket = nameToTicketMap[nameAtIndex]
         
         // If no mapping, try to extract ticket from "Name (Ticket)" format
-        if (!nameTicket || nameTicket === name) {
-          const ticketMatch = name.match(/^(.+?)\s*\((\d+)\)$/)
+        if (!nameTicket || nameTicket === nameAtIndex) {
+          const ticketMatch = nameAtIndex.match(/^(.+?)\s*\((\d+)\)$/)
           if (ticketMatch) {
             nameTicket = ticketMatch[2]
           }
         }
         
-        // Only remove if ticket number exists and matches exactly
-        // Don't use name as fallback - this prevents removing all entries with same name
-        if (nameTicket && nameTicket !== name && String(nameTicket).trim() !== String(name).trim()) {
-          const normalizedNameTicket = String(nameTicket).trim()
-          const matches = normalizedNameTicket === normalizedWinnerTicket
-          if (matches) {
-            removedCount++
-            return false // Remove this entry
-          }
-        }
-        
-        // If no ticket mapping exists OR ticket equals name, keep the entry (don't remove by name)
-        return true
-      })
-      
-      
-      if (removedCount === 0) {
-        // Fast lookup: Use ticketToIndexMap for O(1) removal
-        const ticketIndex = ticketToIndexMap[normalizedWinnerTicket]
-        if (ticketIndex !== undefined && ticketIndex >= 0 && ticketIndex < names.length) {
-          const finalUpdatedNames = names.filter((name, idx) => idx !== ticketIndex)
-          setNames(finalUpdatedNames)
+        // Verify ticket matches before removing
+        if (nameTicket && nameTicket !== nameAtIndex && String(nameTicket).trim() === normalizedWinnerTicket) {
+          finalNames = names.filter((name, idx) => idx !== ticketIndex)
           removedCount = 1
-        } else {
-          // Last resort: Try exact name match
-          const exactNameMatch = names.findIndex(name => name === winner.name)
-          if (exactNameMatch !== -1) {
-            const finalUpdatedNames = names.filter((name, idx) => idx !== exactNameMatch)
-            setNames(finalUpdatedNames)
-            removedCount = 1
-          } else {
-            alert(`Cannot remove winner: Ticket number "${normalizedWinnerTicket}" not found in entries.`)
-            return
-          }
+          removedIndex = ticketIndex
         }
       }
       
-      console.log(`Successfully removed ${removedCount} entry/entries with ticket "${normalizedWinnerTicket}"`)
-      setNames(updatedNames)
+      // If ticketToIndexMap didn't work, try filtering by ticket
+      if (removedCount === 0) {
+        // Find the FIRST index that matches the ticket
+        const matchingIndex = names.findIndex((name, index) => {
+          // First try to get ticket from mapping
+          let nameTicket = nameToTicketMap[name]
+          
+          // If no mapping, try to extract ticket from "Name (Ticket)" format
+          if (!nameTicket || nameTicket === name) {
+            const ticketMatch = name.match(/^(.+?)\s*\((\d+)\)$/)
+            if (ticketMatch) {
+              nameTicket = ticketMatch[2]
+            }
+          }
+          
+          // Only match if ticket number exists and matches exactly
+          if (nameTicket && nameTicket !== name && String(nameTicket).trim() !== String(name).trim()) {
+            const normalizedNameTicket = String(nameTicket).trim()
+            return normalizedNameTicket === normalizedWinnerTicket
+          }
+          
+          return false
+        })
+        
+        if (matchingIndex !== -1) {
+          finalNames = names.filter((name, idx) => idx !== matchingIndex)
+          removedCount = 1
+          removedIndex = matchingIndex
+        }
+      }
       
-      // Update textarea - remove lines that match the ticket ONLY
+      // If we still haven't found a match, try exact name match as last resort (only if name is unique)
+      if (removedCount === 0) {
+        const exactNameMatch = names.findIndex(name => name === winner.name)
+        if (exactNameMatch !== -1) {
+          // Check if name is unique before removing
+          const nameOccurrences = names.filter(name => name === winner.name).length
+          if (nameOccurrences === 1) {
+            finalNames = names.filter((name, idx) => idx !== exactNameMatch)
+            removedCount = 1
+            removedIndex = exactNameMatch
+          } else {
+            alert(`Cannot remove winner: Ticket number "${normalizedWinnerTicket}" not found, and name "${winner.name}" appears ${nameOccurrences} times.`)
+            return
+          }
+        } else {
+          alert(`Cannot remove winner: Ticket number "${normalizedWinnerTicket}" not found in entries.`)
+          return
+        }
+      }
+      
+      // Only set names once with the final filtered array
+      if (finalNames !== null) {
+        console.log(`Successfully removed ${removedCount} entry/entries with ticket "${normalizedWinnerTicket}"`)
+        setNames(finalNames)
+      }
+      
+      // Update textarea - remove ONLY ONE line that matches the ticket
+      // CRITICAL: Only remove the FIRST matching line to prevent multiple removals
       let textareaRemovedCount = 0
+      let textareaRemovedOnce = false // Track if we've already removed one line
       const lines = namesText.split('\n').filter(line => {
+        // If we've already removed one line, keep all remaining lines
+        if (textareaRemovedOnce) {
+          return true
+        }
+        
         const lineName = line.trim()
         if (!lineName) return true // Keep empty lines
         
@@ -1416,11 +1497,12 @@ function App() {
         if (lineTicket && lineTicket !== lineName && String(lineTicket).trim() !== String(lineName).trim()) {
           const normalizedLineTicket = String(lineTicket).trim()
           const shouldRemove = normalizedLineTicket === normalizedWinnerTicket
-          if (shouldRemove) {
+          if (shouldRemove && !textareaRemovedOnce) {
             textareaRemovedCount++
+            textareaRemovedOnce = true // Mark that we've removed one line
             console.log('Removing line from textarea by ticket match:', { lineName, lineTicket, winnerTicket: normalizedWinnerTicket })
+            return false // Remove this line
           }
-          return !shouldRemove // Keep if ticket doesn't match
         }
         
         // If no ticket mapping OR ticket equals name, keep the line (don't remove by name)
@@ -1590,7 +1672,7 @@ function App() {
       localStorage.removeItem('winnersList')
     }
     
-    const handleResetWheel = () => {
+    const handleResetWheel = async () => {
       console.log('App: Resetting wheel')
       // Reset names to default
       setNames(['Ali', 'Beatriz', 'Charles', 'Diya', 'Eric', 'Fatima', 'Gabriel', 'Hanna'])
@@ -1600,6 +1682,7 @@ function App() {
       setNameToTicketMap({})
       setNameToIndexMap({})
       setTicketToNameMap({})
+      setTicketToIndexMap({})
       setFinalRotation(0)
       setIsSpinning(false)
       setShowWinner(false)
@@ -1607,18 +1690,201 @@ function App() {
       setIsSidebarHidden(false)
       setSpinCount(0)
       localStorage.setItem('spinCount', '0')
+      
+      // Reload files list to reflect deletions
+      try {
+        const backendFiles = await getSpinFiles()
+        if (backendFiles && Array.isArray(backendFiles)) {
+          const activeFiles = backendFiles.filter(f => f.active !== false)
+          setSpinFiles(activeFiles)
+        } else {
+          setSpinFiles([])
+        }
+      } catch (error) {
+        console.error('Failed to reload files after reset:', error)
+        setSpinFiles([])
+      }
+    }
+    
+    // Handle file deletion - remove entries from wheel that belong to deleted file
+    const handleFileDeleted = async (event) => {
+      const { fileId } = event.detail || {}
+      if (!fileId) return
+      
+      console.log('App: File deleted, removing entries from wheel:', { fileId })
+      
+      // Reload all files from backend and merge entries from remaining files
+      try {
+        const backendFiles = await getSpinFiles()
+        if (backendFiles && Array.isArray(backendFiles)) {
+          const activeFiles = backendFiles.filter(f => f.active !== false && f.id !== fileId)
+          setSpinFiles(activeFiles)
+          
+          // If there are active files remaining, merge their entries
+          if (activeFiles.length > 0) {
+            // Use the same logic as handleFileUploaded to merge all files
+            const allEntries = []
+            const nameToOriginalItemMap = {}
+            const ticketMap = {}
+            const ticketNameMap = {}
+            const ticketIndexMap = {}
+            const indexMap = {}
+            
+            // Get removed entries to filter them out
+            const getRemovedEntries = () => {
+              try {
+                const removed = localStorage.getItem('removedEntries')
+                return removed ? JSON.parse(removed) : []
+              } catch (e) {
+                return []
+              }
+            }
+            const normalize = (str) => String(str || '').trim().toLowerCase()
+            const removedEntries = getRemovedEntries()
+            
+            // Process each active file (same logic as handleFileUploaded)
+            activeFiles.forEach((file, fileIndex) => {
+              if (file.json_content && Array.isArray(file.json_content)) {
+                file.json_content.forEach((item, idx) => {
+                  const globalIndex = allEntries.length
+                  
+                  // Extract name and ticket (same logic as handleSelectSpinFile)
+                  let formattedName = ''
+                  let ticketNumber = ''
+                  
+                  if (typeof item === 'string') {
+                    formattedName = item.trim() || `Entry ${globalIndex + 1}`
+                    const ticketMatch = formattedName.match(/^(.+?)\s*\((\d+)\)$/)
+                    if (ticketMatch) {
+                      ticketNumber = ticketMatch[2]
+                    }
+                  } else if (typeof item === 'object' && item !== null) {
+                    // Extract ticket number
+                    ticketNumber = item['Ticket Number'] || 
+                                  item['ticket number'] || 
+                                  item['ticketNumber'] || 
+                                  item['Ticket'] || 
+                                  item['ticket'] ||
+                                  item['Ticket No'] ||
+                                  item['ticket no'] ||
+                                  item['TicketNo'] ||
+                                  item['Ticket #'] ||
+                                  item['ticket #'] ||
+                                  item['Ticket#'] ||
+                                  item['Ticket ID'] ||
+                                  item['ticket id'] ||
+                                  item['TicketId'] ||
+                                  ''
+                    
+                    // Search all keys for ticket
+                    if (!ticketNumber || String(ticketNumber).trim() === '') {
+                      for (const key of Object.keys(item)) {
+                        if (key.toLowerCase().includes('ticket')) {
+                          const value = item[key]
+                          if (value && String(value).trim() !== '') {
+                            ticketNumber = value
+                            break
+                          }
+                        }
+                      }
+                    }
+                    
+                    // Extract name
+                    const firstName = item['First Name'] || item['first name'] || item['firstName'] || ''
+                    const lastName = item['Last Name'] || item['last name'] || item['lastName'] || ''
+                    let displayName = ''
+                    
+                    if (firstName && lastName) {
+                      displayName = `${firstName} ${lastName}`.trim()
+                    } else if (firstName) {
+                      displayName = String(firstName).trim()
+                    } else if (lastName) {
+                      displayName = String(lastName).trim()
+                    }
+                    
+                    // Format as "Name (Ticket)" if ticket exists
+                    if (ticketNumber && String(ticketNumber).trim() !== '') {
+                      formattedName = displayName ? `${displayName} (${String(ticketNumber).trim()})` : String(ticketNumber).trim()
+                    } else {
+                      formattedName = displayName || `Entry ${globalIndex + 1}`
+                    }
+                  } else {
+                    formattedName = String(item).trim() || `Entry ${globalIndex + 1}`
+                  }
+                  
+                  // Check if entry is removed (by ticket number)
+                  const entryTicket = ticketNumber ? normalize(ticketNumber) : null
+                  let isRemoved = false
+                  if (entryTicket && entryTicket !== normalize(formattedName)) {
+                    isRemoved = removedEntries.some(removed => {
+                      const removedTicket = normalize(removed.ticket || removed.originalTicket)
+                      return removedTicket && removedTicket !== '' && entryTicket === removedTicket
+                    })
+                  }
+                  
+                  // Only add if not removed
+                  if (!isRemoved) {
+                    allEntries.push(formattedName)
+                    const uniqueKey = `${formattedName}-${globalIndex}`
+                    nameToOriginalItemMap[uniqueKey] = item
+                    
+                    // Create mappings
+                    const finalTicket = ticketNumber ? String(ticketNumber).trim() : ''
+                    if (finalTicket) {
+                      ticketMap[formattedName] = finalTicket
+                      ticketNameMap[finalTicket] = formattedName
+                      ticketIndexMap[finalTicket] = globalIndex
+                    }
+                    indexMap[formattedName] = globalIndex
+                  }
+                })
+              }
+            })
+            
+            // Update wheel with merged entries from remaining files
+            setNames(allEntries)
+            setNamesText(allEntries.join('\n'))
+            setNameToTicketMap(ticketMap)
+            setNameToIndexMap(indexMap)
+            setTicketToNameMap(ticketNameMap)
+            setTicketToIndexMap(ticketIndexMap)
+            
+            console.log('App: Wheel updated after file deletion:', {
+              remainingFiles: activeFiles.length,
+              totalEntries: allEntries.length
+            })
+          } else {
+            // No files remaining, reset to dummy data
+            setNames(['Ali', 'Beatriz', 'Charles', 'Diya', 'Eric', 'Fatima', 'Gabriel', 'Hanna'])
+            setNamesText('Ali\nBeatriz\nCharles\nDiya\nEric\nFatima\nGabriel\nHanna')
+            setNameToTicketMap({})
+            setNameToIndexMap({})
+            setTicketToNameMap({})
+            setTicketToIndexMap({})
+            setSelectedSpinFile(null)
+          }
+        } else {
+          setSpinFiles([])
+        }
+      } catch (error) {
+        console.error('Failed to reload files after deletion:', error)
+      }
     }
     
     window.addEventListener('resetAllWinners', handleResetAllWinners)
     document.addEventListener('resetAllWinners', handleResetAllWinners)
     window.addEventListener('resetWheel', handleResetWheel)
     document.addEventListener('resetWheel', handleResetWheel)
+    window.addEventListener('fileDeleted', handleFileDeleted)
+    document.addEventListener('fileDeleted', handleFileDeleted)
     
     return () => {
       window.removeEventListener('resetAllWinners', handleResetAllWinners)
       document.removeEventListener('resetAllWinners', handleResetAllWinners)
       window.removeEventListener('resetWheel', handleResetWheel)
       document.removeEventListener('resetWheel', handleResetWheel)
+      window.removeEventListener('fileDeleted', handleFileDeleted)
+      document.removeEventListener('fileDeleted', handleFileDeleted)
     }
   }, [])
 
@@ -1884,13 +2150,13 @@ function App() {
           // The formatted name "Name (324)" might have a different number than actual ticket
           // Try multiple field names to find the actual ticket number
           let ticketNumber = originalItem['Ticket Number'] || 
-                            originalItem['ticket number'] || 
-                            originalItem['ticketNumber'] || 
-                            originalItem['Ticket'] || 
-                            originalItem['ticket'] ||
-                            originalItem['Ticket No'] ||
-                            originalItem['ticket no'] ||
-                            originalItem['TicketNo'] ||
+                               originalItem['ticket number'] || 
+                               originalItem['ticketNumber'] || 
+                               originalItem['Ticket'] || 
+                               originalItem['ticket'] ||
+                               originalItem['Ticket No'] ||
+                               originalItem['ticket no'] ||
+                               originalItem['TicketNo'] ||
                             originalItem['Ticket #'] ||
                             originalItem['ticket #'] ||
                             originalItem['Ticket#'] ||
@@ -2281,6 +2547,7 @@ function App() {
   }
 
   // Handle file uploaded from admin panel
+  // IMPORTANT: Load ALL active files and merge their entries, not just the uploaded file
   const handleFileUploaded = async (uploadedFile) => {
     console.log('handleFileUploaded called with:', {
       fileId: uploadedFile?.id,
@@ -2295,70 +2562,175 @@ function App() {
       if (backendFiles && Array.isArray(backendFiles)) {
         const activeFiles = backendFiles.filter(f => f.active !== false)
         setSpinFiles(activeFiles)
+        
+        // Load ALL active files and merge their entries (not just the uploaded file)
+        if (activeFiles.length > 0) {
+          console.log('Loading all active files to merge entries:', {
+            totalFiles: activeFiles.length,
+            fileIds: activeFiles.map(f => f.id),
+            uploadedFileId: uploadedFile?.id
+          })
+          
+          // Merge entries from all active files
+          const allEntries = []
+          const nameToOriginalItemMap = {}
+          const ticketMap = {}
+          const ticketNameMap = {}
+          const ticketIndexMap = {}
+          const indexMap = {}
+          
+          // Get removed entries to filter them out
+          const getRemovedEntries = () => {
+            try {
+              const removed = localStorage.getItem('removedEntries')
+              return removed ? JSON.parse(removed) : []
+            } catch (e) {
+              return []
+            }
+          }
+          const normalize = (str) => String(str || '').trim().toLowerCase()
+          const removedEntries = getRemovedEntries()
+          
+          // Process each active file
+          activeFiles.forEach((file, fileIndex) => {
+            if (file.json_content && Array.isArray(file.json_content)) {
+              console.log(`Processing file ${fileIndex + 1}/${activeFiles.length}:`, {
+                fileId: file.id,
+                filename: file.filename || file.name,
+                entriesCount: file.json_content.length
+              })
+              
+              file.json_content.forEach((item, idx) => {
+                const globalIndex = allEntries.length
+                
+                // Extract name and ticket (same logic as handleSelectSpinFile)
+                let formattedName = ''
+                let ticketNumber = ''
+                
+                if (typeof item === 'string') {
+                  formattedName = item.trim() || `Entry ${globalIndex + 1}`
+                  const ticketMatch = formattedName.match(/^(.+?)\s*\((\d+)\)$/)
+                  if (ticketMatch) {
+                    ticketNumber = ticketMatch[2]
+                  }
+                } else if (typeof item === 'object' && item !== null) {
+                  // Extract ticket number
+                  ticketNumber = item['Ticket Number'] || 
+                                item['ticket number'] || 
+                                item['ticketNumber'] || 
+                                item['Ticket'] || 
+                                item['ticket'] ||
+                                item['Ticket No'] ||
+                                item['ticket no'] ||
+                                item['TicketNo'] ||
+                                item['Ticket #'] ||
+                                item['ticket #'] ||
+                                item['Ticket#'] ||
+                                item['Ticket ID'] ||
+                                item['ticket id'] ||
+                                item['TicketId'] ||
+                                ''
+                  
+                  // Search all keys for ticket
+                  if (!ticketNumber || String(ticketNumber).trim() === '') {
+                    for (const key of Object.keys(item)) {
+                      if (key.toLowerCase().includes('ticket')) {
+                        const value = item[key]
+                        if (value && String(value).trim() !== '') {
+                          ticketNumber = value
+                          break
+                        }
+                      }
+                    }
+                  }
+                  
+                  // Extract name
+                  const firstName = item['First Name'] || item['first name'] || item['firstName'] || ''
+                  const lastName = item['Last Name'] || item['last name'] || item['lastName'] || ''
+                  let displayName = ''
+                  
+                  if (firstName && lastName) {
+                    displayName = `${firstName} ${lastName}`.trim()
+                  } else if (firstName) {
+                    displayName = String(firstName).trim()
+                  } else if (lastName) {
+                    displayName = String(lastName).trim()
+                  }
+                  
+                  // Format as "Name (Ticket)" if ticket exists
+                  if (ticketNumber && String(ticketNumber).trim() !== '') {
+                    formattedName = displayName ? `${displayName} (${String(ticketNumber).trim()})` : String(ticketNumber).trim()
+                  } else {
+                    formattedName = displayName || `Entry ${globalIndex + 1}`
+                  }
+                } else {
+                  formattedName = String(item).trim() || `Entry ${globalIndex + 1}`
+                }
+                
+                // Check if entry is removed (by ticket number)
+                const entryTicket = ticketNumber ? normalize(ticketNumber) : null
+                let isRemoved = false
+                if (entryTicket && entryTicket !== normalize(formattedName)) {
+                  isRemoved = removedEntries.some(removed => {
+                    const removedTicket = normalize(removed.ticket || removed.originalTicket)
+                    return removedTicket && removedTicket !== '' && entryTicket === removedTicket
+                  })
+                }
+                
+                // Only add if not removed
+                if (!isRemoved) {
+                  allEntries.push(formattedName)
+                  const uniqueKey = `${formattedName}-${globalIndex}`
+                  nameToOriginalItemMap[uniqueKey] = item
+                  
+                  // Create mappings
+                  const finalTicket = ticketNumber ? String(ticketNumber).trim() : ''
+                  if (finalTicket) {
+                    ticketMap[formattedName] = finalTicket
+                    ticketNameMap[finalTicket] = formattedName
+                    ticketIndexMap[finalTicket] = globalIndex
+                  }
+                  indexMap[formattedName] = globalIndex
+                }
+              })
+            }
+          })
+          
+          console.log('Merged entries from all files:', {
+            totalEntries: allEntries.length,
+            filesProcessed: activeFiles.length,
+            entriesPerFile: activeFiles.map(f => ({
+              fileId: f.id,
+              filename: f.filename || f.name,
+              entries: f.json_content?.length || 0
+            }))
+          })
+          
+          // Update wheel with merged entries
+          setNames(allEntries)
+          setNamesText(allEntries.join('\n'))
+          setNameToTicketMap(ticketMap)
+          setNameToIndexMap(indexMap)
+          setTicketToNameMap(ticketNameMap)
+          setTicketToIndexMap(ticketIndexMap)
+          
+          // Select the uploaded file (for center image and other file-specific settings)
+          if (uploadedFile) {
+            setSelectedSpinFile(uploadedFile)
+            
+            // Set center image from uploaded file if it has one
+            if (uploadedFile.picture && String(uploadedFile.picture).trim() !== '') {
+              setCenterImage(String(uploadedFile.picture).trim())
+              localStorage.setItem('centerImage', String(uploadedFile.picture).trim())
+            }
+          }
+        }
       } else {
         setSpinFiles([])
       }
     } catch (error) {
       console.error('Failed to reload files list from backend:', error)
       setSpinFiles([])
-    }
-      
-      // Auto-select the uploaded file and load its data onto the wheel
-      if (uploadedFile) {
-      // Reload files from backend first to get latest data
-      try {
-        const backendFiles = await getSpinFiles()
-        if (backendFiles && Array.isArray(backendFiles)) {
-          const activeFiles = backendFiles.filter(f => f.active !== false)
-          setSpinFiles(activeFiles)
-        }
-      } catch (backendError) {
-        console.error('Failed to reload from backend:', backendError)
-      }
-      
-      // Check if file has json_content (required for loading entries)
-      if (uploadedFile.json_content && Array.isArray(uploadedFile.json_content)) {
-        console.log('Loading file directly to wheel:', {
-          fileId: uploadedFile.id,
-          entriesCount: uploadedFile.json_content.length,
-          firstEntry: uploadedFile.json_content[0],
-          fileKeys: Object.keys(uploadedFile)
-        })
-        // Use the file directly - it already has json_content from AdminPanel
-        // Force immediate state update
-        handleSelectSpinFile(uploadedFile)
-        console.log('handleSelectSpinFile called, waiting for state update...')
-      } else if (uploadedFile.id) {
-        // File doesn't have json_content, try to fetch from backend
-        try {
-          console.log('File missing json_content, fetching from backend API...')
-          const backendFiles = await getSpinFiles()
-          const fileToLoad = backendFiles?.find(f => f.id === uploadedFile.id)
-          
-          if (fileToLoad && fileToLoad.json_content && Array.isArray(fileToLoad.json_content)) {
-            console.log('Found file in backend, loading:', {
-              fileId: fileToLoad.id,
-              entriesCount: fileToLoad.json_content.length
-            })
-            handleSelectSpinFile(fileToLoad)
-          } else {
-            console.error('File not found or missing json_content in backend:', {
-              fileId: uploadedFile.id,
-              foundInBackend: !!backendFiles?.find(f => f.id === uploadedFile.id),
-              hasJsonContent: !!backendFiles?.find(f => f.id === uploadedFile.id)?.json_content
-            })
-            alert('Failed to load file: File data not available. Please try selecting the file manually from the dropdown.')
-          }
-        } catch (error) {
-          console.error('Failed to load file from backend:', error)
-          alert('Failed to load file. Please try selecting the file manually from the dropdown.')
-        }
-      } else {
-        console.error('Invalid file object:', uploadedFile)
-        alert('Invalid file data. Please try selecting the file manually from the dropdown.')
-      }
-    } else {
-      console.warn('No file provided to handleFileUploaded')
     }
   }
 
@@ -2466,6 +2838,29 @@ function App() {
     return () => clearInterval(interval)
   }, [names, isSpinning, showWinner, winner, fixedWinnerName])
 
+  // Update popup position when wheel container position changes (sidebar toggle, resize, etc.)
+  useEffect(() => {
+    const updatePopupPosition = () => {
+      if (wheelContainerRef.current && showWinner) {
+        const rect = wheelContainerRef.current.getBoundingClientRect()
+        const centerX = rect.left + rect.width / 2
+        const centerY = rect.top + rect.height / 2
+        setPopupPosition({
+          top: `${centerY}px`,
+          left: `${centerX}px`,
+          transform: 'translate(-50%, -50%)'
+        })
+      }
+    }
+    
+    updatePopupPosition()
+    window.addEventListener('resize', updatePopupPosition)
+    
+    return () => {
+      window.removeEventListener('resize', updatePopupPosition)
+    }
+  }, [showWinner, isSidebarHidden])
+
   const colors = ['#efb71d', '#24a643', '#4d7ceb', '#d82135'] // yellow, green, blue, red
 
   // Helper to determine text color based on background
@@ -2561,7 +2956,7 @@ function App() {
             <FiMaximize className="icon" />
           </button>
           <div className="wheel-container-fullscreen">
-            <div className="wheel-wrapper" onClick={handleWheelClick} style={{ cursor: (isSpinning || showWinner) ? 'not-allowed' : 'pointer' }}>
+            <div className="wheel-wrapper" ref={wheelWrapperRef} onClick={handleWheelClick} style={{ cursor: 'pointer' }}>
               <div style={{ width: '100%', height: '100%' }}>
                 <CanvasWheel
                   names={fixedBatchRef.current && isSpinning ? fixedBatchRef.current : displayedNames}
@@ -2579,43 +2974,110 @@ function App() {
                   xmlns="http://www.w3.org/2000/svg"
                   style={{
                     pointerEvents: 'none',
-                    transform: 'translateY(-50%)' // Center vertically, pointing right (3 o'clock)
+                    position: 'absolute',
+                    top: '50%',
+                    right: '-1.33%', // Percentage-based: scales with wheel-wrapper size at any zoom level
+                    transform: 'translateY(-50%)',
+                    width: '5.33%', // ~40px relative to 750px wheel, scales with zoom
+                    height: '5.33%', // ~40px relative to 750px wheel, scales with zoom
+                    minWidth: '5.33%',
+                    minHeight: '5.33%',
+                    maxWidth: '5.33%',
+                    maxHeight: '5.33%',
+                    zIndex: 20,
+                    margin: 0,
+                    padding: 0,
+                    boxSizing: 'border-box',
+                    display: 'block',
+                    left: 'auto'
                   }}
                 >
                   <defs>
-                    <linearGradient id="dynamicGradientFS" x1="0%" y1="0%" x2="100%" y2="100%">
-                      <stop offset="0%" stopColor={pointerColor} style={{ filter: 'brightness(1.5)' }} />
-                      <stop offset="50%" stopColor={pointerColor} />
-                      <stop offset="100%" stopColor={pointerColor} style={{ filter: 'brightness(0.7)' }} />
+                    {/* Golden 3D gradient - rich metallic gold */}
+                    <linearGradient id="goldenGradientFS" x1="0%" y1="0%" x2="100%" y2="100%">
+                      <stop offset="0%" stopColor="#FFD700" />
+                      <stop offset="25%" stopColor="#FFC125" />
+                      <stop offset="50%" stopColor="#FFA500" />
+                      <stop offset="75%" stopColor="#FF8C00" />
+                      <stop offset="100%" stopColor="#CD853F" />
                     </linearGradient>
-                    <filter id="bevelFS" x="-50%" y="-50%" width="200%" height="200%">
-                      <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
-                      <feOffset in="blur" dx="2" dy="2" result="offsetBlur" />
-                      <feSpecularLighting in="blur" surfaceScale="5" specularConstant=".75" specularExponent="20" lightingColor="#bbbbbb" result="specOut">
-                        <fePointLight x="-5000" y="-10000" z="20000" />
+                    {/* Top highlight for 3D shine */}
+                    <linearGradient id="goldenTopHighlightFS" x1="0%" y1="0%" x2="0%" y2="100%">
+                      <stop offset="0%" stopColor="rgba(255,255,255,0.8)" />
+                      <stop offset="30%" stopColor="rgba(255,255,255,0.4)" />
+                      <stop offset="60%" stopColor="rgba(255,255,255,0)" />
+                      <stop offset="100%" stopColor="rgba(0,0,0,0.3)" />
+                    </linearGradient>
+                    {/* Side highlight for depth */}
+                    <linearGradient id="goldenSideHighlightFS" x1="0%" y1="0%" x2="100%" y2="0%">
+                      <stop offset="0%" stopColor="rgba(255,255,255,0.7)" />
+                      <stop offset="40%" stopColor="rgba(255,255,255,0.3)" />
+                      <stop offset="100%" stopColor="rgba(0,0,0,0.2)" />
+                    </linearGradient>
+                    {/* Enhanced 3D bevel filter */}
+                    <filter id="goldenBevelFS" x="-100%" y="-100%" width="300%" height="300%">
+                      <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur" />
+                      <feOffset in="blur" dx="4" dy="4" result="offsetBlur" />
+                      <feSpecularLighting in="blur" surfaceScale="10" specularConstant="1.5" specularExponent="30" lightingColor="#FFD700" result="specOut">
+                        <fePointLight x="-5000" y="-10000" z="40000" />
                       </feSpecularLighting>
                       <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut" />
-                      <feComposite in="SourceGraphic" in2="specOut" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litPaint" />
+                      <feComposite in="SourceGraphic" in2="specOut" operator="arithmetic" k1="0" k2="1" k3="1.2" k4="0" result="litPaint" />
                       <feMerge>
                         <feMergeNode in="offsetBlur" />
                         <feMergeNode in="litPaint" />
                       </feMerge>
                     </filter>
+                    {/* Enhanced shadow */}
+                    <filter id="arrowShadowFS">
+                      <feGaussianBlur in="SourceAlpha" stdDeviation="5" />
+                      <feOffset dx="3" dy="3" result="offsetblur" />
+                      <feComponentTransfer>
+                        <feFuncA type="linear" slope="0.4" />
+                      </feComponentTransfer>
+                      <feMerge>
+                        <feMergeNode />
+                        <feMergeNode in="SourceGraphic" />
+                      </feMerge>
+                    </filter>
                   </defs>
-                  {/* Arrow pointing right (3 o'clock position) */}
-                  <path
-                    d="M 10 50 L 90 20 L 90 80 Z"
-                    fill="url(#dynamicGradientFS)"
-                    stroke={pointerColor}
-                    strokeWidth="2"
-                    filter="url(#bevelFS)"
-                  />
-                  <path
-                    d="M 15 50 L 85 24 L 85 76 Z"
-                    fill="none"
-                    stroke="rgba(255,255,255,0.4)"
-                    strokeWidth="2"
-                  />
+                  {/* Golden 3D arrow - polished metallic style */}
+                  <g filter="url(#arrowShadowFS)">
+                    {/* Main arrow body with golden gradient */}
+                    <path
+                      d="M 10 50 L 90 20 L 90 80 Z"
+                      fill="url(#goldenGradientFS)"
+                      stroke="#CD853F"
+                      strokeWidth="1"
+                      filter="url(#goldenBevelFS)"
+                    />
+                    {/* Top highlight for shine */}
+                    <path
+                      d="M 10 50 L 90 20 L 90 80 Z"
+                      fill="url(#goldenTopHighlightFS)"
+                      opacity="0.6"
+                    />
+                    {/* Side highlight for depth */}
+                    <path
+                      d="M 10 50 L 90 20 L 90 80 Z"
+                      fill="url(#goldenSideHighlightFS)"
+                      opacity="0.5"
+                    />
+                    {/* Bright inner highlight line */}
+                    <path
+                      d="M 12 50 L 88 22 L 88 78 Z"
+                      fill="none"
+                      stroke="rgba(255,255,255,0.7)"
+                      strokeWidth="1.5"
+                    />
+                    {/* Subtle inner shadow line */}
+                    <path
+                      d="M 15 50 L 85 24 L 85 76 Z"
+                      fill="none"
+                      stroke="rgba(0,0,0,0.2)"
+                      strokeWidth="1"
+                    />
+                  </g>
                 </svg>
               </div>
               {/* Fixed arc text overlay - doesn't rotate */}
@@ -2708,12 +3170,18 @@ function App() {
       />
       {/* Header Navigation Bar */}
       <header className="header">
+        <div className="header-left">
+          <button className="header-btn admin-btn mobile-admin-btn" title="Admin Panel" onClick={() => setShowAdminPanel(true)}>
+            <FiUpload className="icon" />
+            <span>Admin</span>
+          </button>
+        </div>
         <div className="header-right">
           <button className="header-btn" title="Customize" onClick={() => setShowCustomize(true)}>
             <FiSettings className="icon" />
             <span>Customize</span>
           </button>
-          <button className="header-btn" title="Admin Panel" onClick={() => setShowAdminPanel(true)}>
+          <button className="header-btn admin-btn desktop-admin-btn" title="Admin Panel" onClick={() => setShowAdminPanel(true)}>
             <FiUpload className="icon" />
             <span>Admin</span>
           </button>
@@ -2801,26 +3269,26 @@ function App() {
               </div>
             )}
           </div>
-          <button className="header-btn" title="Save">
+          <button className="header-btn hide-on-mobile" title="Save">
             <FiSave className="icon" />
             <span>Save</span>
           </button>
-          <button className="header-btn" title="Share">
+          <button className="header-btn hide-on-mobile" title="Share">
             <FiShare2 className="icon" />
             <span>Share</span>
           </button>
-          <button className="header-btn" title="Gallery">
+          <button className="header-btn hide-on-mobile" title="Gallery">
             <FiSearch className="icon" />
             <span>Gallery</span>
           </button>
           <button className="header-btn" title="Fullscreen" onClick={() => setIsFullscreen(true)}>
             <FiMaximize className="icon" />
           </button>
-          <button className="header-btn dropdown" title="More">
+          <button className="header-btn dropdown hide-on-mobile" title="More">
             <span>More</span>
             <FiChevronDown className="icon" />
           </button>
-          <button className="header-btn dropdown" title="Language">
+          <button className="header-btn dropdown hide-on-mobile" title="Language">
             <FiGlobe className="icon" />
             <span>English</span>
             <FiChevronDown className="icon" />
@@ -2831,8 +3299,8 @@ function App() {
       {/* Main Content */}
       <div className="main-content">
         {/* Center - Wheel */}
-        <div className="wheel-container">
-          <div className="wheel-wrapper" onClick={handleWheelClick} style={{ cursor: (isSpinning || showWinner) ? 'not-allowed' : 'pointer' }}>
+        <div className="wheel-container" ref={wheelContainerRef}>
+          <div className="wheel-wrapper" ref={wheelWrapperRef} onClick={handleWheelClick} style={{ cursor: 'pointer' }}>
             <div style={{ width: '100%', height: '100%' }}>
               <CanvasWheel
                 names={displayedNames}
@@ -2906,43 +3374,110 @@ function App() {
               xmlns="http://www.w3.org/2000/svg"
               style={{
                 pointerEvents: 'none',
-                transform: 'translateY(-50%)' // Center vertically, pointing right (3 o'clock)
+                position: 'absolute',
+                top: '50%',
+                right: '-1.33%', // Percentage-based: scales with wheel-wrapper size at any zoom level
+                transform: 'translateY(-50%)',
+                width: '5.33%', // ~40px relative to 750px wheel, scales with zoom
+                height: '5.33%', // ~40px relative to 750px wheel, scales with zoom
+                minWidth: '5.33%',
+                minHeight: '5.33%',
+                maxWidth: '5.33%',
+                maxHeight: '5.33%',
+                zIndex: 20,
+                margin: 0,
+                padding: 0,
+                boxSizing: 'border-box',
+                display: 'block',
+                left: 'auto'
               }}
             >
               <defs>
-                <linearGradient id="dynamicGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                  <stop offset="0%" stopColor={pointerColor} style={{ filter: 'brightness(1.5)' }} />
-                  <stop offset="50%" stopColor={pointerColor} />
-                  <stop offset="100%" stopColor={pointerColor} style={{ filter: 'brightness(0.7)' }} />
+                {/* Golden 3D gradient - rich metallic gold */}
+                <linearGradient id="goldenGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                  <stop offset="0%" stopColor="#FFD700" />
+                  <stop offset="25%" stopColor="#FFC125" />
+                  <stop offset="50%" stopColor="#FFA500" />
+                  <stop offset="75%" stopColor="#FF8C00" />
+                  <stop offset="100%" stopColor="#CD853F" />
                 </linearGradient>
-                <filter id="bevel" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur in="SourceAlpha" stdDeviation="2" result="blur" />
-                  <feOffset in="blur" dx="2" dy="2" result="offsetBlur" />
-                  <feSpecularLighting in="blur" surfaceScale="5" specularConstant=".75" specularExponent="20" lightingColor="#bbbbbb" result="specOut">
-                    <fePointLight x="-5000" y="-10000" z="20000" />
+                {/* Top highlight for 3D shine */}
+                <linearGradient id="goldenTopHighlight" x1="0%" y1="0%" x2="0%" y2="100%">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.8)" />
+                  <stop offset="30%" stopColor="rgba(255,255,255,0.4)" />
+                  <stop offset="60%" stopColor="rgba(255,255,255,0)" />
+                  <stop offset="100%" stopColor="rgba(0,0,0,0.3)" />
+                </linearGradient>
+                {/* Side highlight for depth */}
+                <linearGradient id="goldenSideHighlight" x1="0%" y1="0%" x2="100%" y2="0%">
+                  <stop offset="0%" stopColor="rgba(255,255,255,0.7)" />
+                  <stop offset="40%" stopColor="rgba(255,255,255,0.3)" />
+                  <stop offset="100%" stopColor="rgba(0,0,0,0.2)" />
+                </linearGradient>
+                {/* Enhanced 3D bevel filter */}
+                <filter id="goldenBevel" x="-100%" y="-100%" width="300%" height="300%">
+                  <feGaussianBlur in="SourceAlpha" stdDeviation="4" result="blur" />
+                  <feOffset in="blur" dx="4" dy="4" result="offsetBlur" />
+                  <feSpecularLighting in="blur" surfaceScale="10" specularConstant="1.5" specularExponent="30" lightingColor="#FFD700" result="specOut">
+                    <fePointLight x="-5000" y="-10000" z="40000" />
                   </feSpecularLighting>
                   <feComposite in="specOut" in2="SourceAlpha" operator="in" result="specOut" />
-                  <feComposite in="SourceGraphic" in2="specOut" operator="arithmetic" k1="0" k2="1" k3="1" k4="0" result="litPaint" />
+                  <feComposite in="SourceGraphic" in2="specOut" operator="arithmetic" k1="0" k2="1" k3="1.2" k4="0" result="litPaint" />
                   <feMerge>
                     <feMergeNode in="offsetBlur" />
                     <feMergeNode in="litPaint" />
                   </feMerge>
                 </filter>
+                {/* Enhanced shadow */}
+                <filter id="arrowShadow">
+                  <feGaussianBlur in="SourceAlpha" stdDeviation="5" />
+                  <feOffset dx="3" dy="3" result="offsetblur" />
+                  <feComponentTransfer>
+                    <feFuncA type="linear" slope="0.4" />
+                  </feComponentTransfer>
+                  <feMerge>
+                    <feMergeNode />
+                    <feMergeNode in="SourceGraphic" />
+                  </feMerge>
+                </filter>
               </defs>
-              {/* Arrow pointing right (3 o'clock position) */}
-              <path
-                d="M 10 50 L 90 20 L 90 80 Z"
-                fill="url(#dynamicGradient)"
-                stroke={pointerColor}
-                strokeWidth="2"
-                filter="url(#bevel)"
-              />
-              <path
-                d="M 15 50 L 85 24 L 85 76 Z"
-                fill="none"
-                stroke="rgba(255,255,255,0.4)"
-                strokeWidth="2"
-              />
+              {/* Golden 3D arrow - polished metallic style */}
+              <g filter="url(#arrowShadow)">
+                {/* Main arrow body with golden gradient */}
+                <path
+                  d="M 10 50 L 90 20 L 90 80 Z"
+                  fill="url(#goldenGradient)"
+                  stroke="#CD853F"
+                  strokeWidth="1"
+                  filter="url(#goldenBevel)"
+                />
+                {/* Top highlight for shine */}
+                <path
+                  d="M 10 50 L 90 20 L 90 80 Z"
+                  fill="url(#goldenTopHighlight)"
+                  opacity="0.6"
+                />
+                {/* Side highlight for depth */}
+                <path
+                  d="M 10 50 L 90 20 L 90 80 Z"
+                  fill="url(#goldenSideHighlight)"
+                  opacity="0.5"
+                />
+                {/* Bright inner highlight line */}
+                <path
+                  d="M 12 50 L 88 22 L 88 78 Z"
+                  fill="none"
+                  stroke="rgba(255,255,255,0.7)"
+                  strokeWidth="1.5"
+                />
+                {/* Subtle inner shadow line */}
+                <path
+                  d="M 15 50 L 85 24 L 85 76 Z"
+                  fill="none"
+                  stroke="rgba(0,0,0,0.2)"
+                  strokeWidth="1"
+                />
+              </g>
             </svg>
           </div>
         </div >
@@ -3015,14 +3550,6 @@ function App() {
                         <span>Add image</span>
                         <FiChevronDown className="icon" />
                       </button>
-                      <label className="advanced-checkbox">
-                        <input
-                          type="checkbox"
-                          checked={showAdvanced}
-                          onChange={(e) => setShowAdvanced(e.target.checked)}
-                        />
-                        <span>Advanced</span>
-                      </label>
                     </div>
 
                     <div className="entries-list">
@@ -3261,8 +3788,15 @@ function App() {
       {/* Winner Pop-up */}
       {
         showWinner && winner && (
-          <div className="winner-overlay" onClick={handleCloseWinner}>
-            <div className="winner-popup" onClick={(e) => e.stopPropagation()}>
+          <div className="winner-overlay" onClick={handleCloseWinner} style={{ 
+            display: 'flex',
+            justifyContent: 'center',
+            alignItems: 'center'
+          }}>
+            <div className="winner-popup" onClick={(e) => e.stopPropagation()} style={{
+              position: 'absolute',
+              ...popupPosition
+            }}>
               <div className="winner-header" style={{ backgroundColor: winner.color }}>
                 <h2>We have a winner!</h2>
                 <button className="winner-close-btn" onClick={handleCloseWinner}>×</button>
@@ -3279,15 +3813,15 @@ function App() {
                     <>
                       <div className="winner-name">{displayName}</div>
                       {finalTicket && (
-                        <div className="winner-ticket" style={{ 
-                          marginTop: '8px', 
-                          fontSize: '18px', 
-                          color: '#666',
-                          fontWeight: '500'
-                        }}>
+                  <div className="winner-ticket" style={{ 
+                          marginTop: '6px', 
+                          fontSize: '16px', 
+                    color: '#666',
+                    fontWeight: '500'
+                  }}>
                           Ticket: {finalTicket}
-                        </div>
-                      )}
+                  </div>
+                )}
                     </>
                   )
                 })()}
