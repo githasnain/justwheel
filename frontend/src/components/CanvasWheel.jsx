@@ -113,6 +113,64 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
             // Clear static canvas - use CSS pixel dimensions (context is already scaled)
             staticCtx.clearRect(0, 0, canvasWidth, canvasHeight)
 
+            // Handle empty state - show a default gray wheel with message
+            if (names.length === 0) {
+                // Draw a simple gray circle
+                staticCtx.beginPath()
+                staticCtx.arc(centerX, centerY, radius, 0, 2 * Math.PI)
+                staticCtx.fillStyle = '#2a2a2a' // Dark gray background
+                staticCtx.fill()
+                
+                // Draw border
+                staticCtx.strokeStyle = '#3a3a3a'
+                staticCtx.lineWidth = 2
+                staticCtx.stroke()
+                
+                // Draw center hub
+                const isMobile = window.innerWidth < 768
+                const hubRadius = isMobile ? 35 : 70
+                staticCtx.beginPath()
+                staticCtx.arc(centerX, centerY, hubRadius, 0, 2 * Math.PI)
+                staticCtx.fillStyle = 'white'
+                staticCtx.shadowColor = 'rgba(0,0,0,0.2)'
+                staticCtx.shadowBlur = 5
+                staticCtx.fill()
+                
+                // Draw center image if available
+                if (centerImageLoadedRef.current && 
+                    centerImageLoadedRef.current.complete && 
+                    centerImageLoadedRef.current.naturalWidth > 0) {
+                    try {
+                        let imageRadius
+                        if (centerImageSize === 'S') {
+                            imageRadius = hubRadius * 0.7
+                        } else if (centerImageSize === 'L') {
+                            imageRadius = hubRadius * 1.3
+                        } else {
+                            imageRadius = hubRadius * 1.0
+                        }
+                        
+                        staticCtx.save()
+                        staticCtx.beginPath()
+                        staticCtx.arc(centerX, centerY, imageRadius, 0, 2 * Math.PI)
+                        staticCtx.clip()
+                        staticCtx.drawImage(
+                            centerImageLoadedRef.current, 
+                            centerX - imageRadius, 
+                            centerY - imageRadius, 
+                            imageRadius * 2, 
+                            imageRadius * 2
+                        )
+                        staticCtx.restore()
+                    } catch (error) {
+                        console.error('Error drawing center image:', error)
+                    }
+                }
+                
+                needsRedrawRef.current = false
+                return
+            }
+
             const numSegments = names.length
             const sliceAngle = (2 * Math.PI) / numSegments
 

@@ -560,63 +560,72 @@ body {
 .winner-popup {
   background-color: #1a1a1a;
   border-radius: 12px;
-  width: min(600px, 70vw);
-  max-width: 600px;
+  /* Match popup width to wheel size - approximately 95% of wheel size */
+  /* Default wheel is min(850px, 90vw), so popup should be ~808px or 85.5vw */
+  width: min(808px, 85.5vw); /* 95% of 850px = 807.5px ≈ 808px, 95% of 90vw = 85.5vw */
+  max-width: 808px;
   overflow: hidden;
   box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
 }
 
-/* Match winner popup width to wheel wrapper width at all breakpoints - smaller size */
+/* Match winner popup width to wheel wrapper width - slightly smaller than wheel */
 /* Mobile First - max-width 480px */
+/* Wheel max-width is 300px, popup should be ~95% = 285px */
 @media (max-width: 480px) {
   .winner-popup {
-    width: 85%;
-    max-width: 250px;
+    width: min(285px, 85.5vw); /* 95% of 300px = 285px, 95% of 90vw = 85.5vw */
+    max-width: 285px;
   }
 }
 
 /* max-width 768px */
+/* Wheel max-width is 400px, popup should be ~95% = 380px */
 @media (max-width: 768px) {
   .winner-popup {
-    width: 85%;
-    max-width: 320px;
+    width: min(380px, 85.5vw); /* 95% of 400px = 380px, 95% of 90vw = 85.5vw */
+    max-width: 380px;
   }
 }
 
 /* max-width 992px */
+/* Wheel max-width is 500px, popup should be ~95% = 475px */
 @media (max-width: 992px) {
   .winner-popup {
-    width: 80%;
-    max-width: 400px;
+    width: min(475px, 85.5vw);
+    max-width: 475px;
   }
 }
 
-/* Desktop breakpoints */
+/* Desktop breakpoints - wheel size - 5% */
+/* Wheel is 600px, popup should be ~95% = 570px */
 @media (min-width: 1024px) {
   .winner-popup {
-    width: 450px;
-    max-width: 450px;
+    width: 570px;
+    max-width: 570px;
   }
 }
 
+/* Wheel is 680px, popup should be ~95% = 646px */
 @media (min-width: 993px) and (max-width: 1200px) {
   .winner-popup {
-    width: 500px;
-    max-width: 500px;
+    width: 646px;
+    max-width: 646px;
   }
 }
 
+/* Wheel is 790px, popup should be ~95% = 751px */
 @media (min-width: 1201px) and (max-width: 1400px) {
   .winner-popup {
-    width: 550px;
-    max-width: 550px;
+    width: 751px;
+    max-width: 751px;
   }
 }
 
+/* Wheel is 850px, popup should be ~95% = 808px */
 @media (min-width: 1401px) {
   .winner-popup {
-    width: 600px;
-    max-width: 600px;
+    width: 808px;
+    max-width: 808px;
   }
 }
 
