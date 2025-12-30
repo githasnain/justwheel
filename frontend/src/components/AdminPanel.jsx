@@ -984,34 +984,34 @@ const AdminPanel = ({ onClose, onFileUploaded, onGoToWheel }) => {
               } else {
                 // Files not found in backend - this is okay, entries are still published
                 // Only log in debug mode to reduce console noise
-                if (process.env.NODE_ENV === 'development') {
+                if (import.meta.env.DEV) {
                   console.debug('No matching files found for fileIds:', fileIds)
                   console.debug('File not found in backend, but entries are published. User can select file manually.')
                 }
               }
             } else {
               // No files returned from backend
-              if (process.env.NODE_ENV === 'development') {
+              if (import.meta.env.DEV) {
                 console.debug('No files returned from backend API')
               }
             }
           } catch (err) {
             // Error loading file - this is okay, entries are still published
             // Only log in debug mode to reduce console noise
-            if (process.env.NODE_ENV === 'development') {
+            if (import.meta.env.DEV) {
               console.debug('Failed to load file for wheel:', err)
               console.debug('Error loading file, but entries are published. User can select file manually.')
             }
           }
         } else {
           // No file IDs found - this is okay, entries are still published
-          if (process.env.NODE_ENV === 'development') {
+          if (import.meta.env.DEV) {
             console.debug('No file IDs found in entries - entries are still published')
           }
         }
       } else {
         // Callback not provided - this is okay, entries are still published
-        if (process.env.NODE_ENV === 'development') {
+        if (import.meta.env.DEV) {
           console.debug('onFileUploaded callback not provided - entries are still published')
         }
       }

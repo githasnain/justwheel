@@ -114,16 +114,35 @@ Click **"Environment Variables"** section and add these:
 
 ### 3.2 Configure Frontend Project
 
+**⚠️ IMPORTANT: Use Manual Override Method (Works Even If Root Directory Fails)**
+
 **Project Settings:**
 - **Project Name**: `wheel-frontend` (or any name you prefer)
-- **Framework Preset**: **Vite** (should auto-detect, if not select "Vite")
-- **Root Directory**: 
-  - Click **"Edit"** button next to Root Directory
-  - Change from `/` to `frontend`
-  - This tells Vercel to use the `frontend` folder
-- **Build Command**: `npm run build` (should auto-fill)
-- **Output Directory**: `dist` (should auto-fill)
-- **Install Command**: `npm install` (should auto-fill)
+- **Framework Preset**: **Other** (don't use Vite preset - we'll override manually)
+- **Root Directory**: Leave as `/` (root) - we'll handle it in build commands
+- **Build Command**: **MANUALLY SET THIS:**
+  ```
+  cd frontend && npm install && npm run build
+  ```
+- **Output Directory**: **MANUALLY SET THIS:**
+  ```
+  frontend/dist
+  ```
+- **Install Command**: **MANUALLY SET THIS:**
+  ```
+  cd frontend && npm install
+  ```
+
+**Why This Works:**
+- Even if Root Directory is `/`, the build commands explicitly `cd` into `frontend` directory
+- This ensures `npm install` runs in the correct directory where `package.json` with vite is located
+- Output directory points to `frontend/dist` where Vite builds the files
+
+**Alternative: If Root Directory Setting Works:**
+- Set Root Directory to `frontend`
+- Build Command: `npm run build`
+- Output Directory: `dist`
+- Install Command: `npm install`
 
 ### 3.3 Set Environment Variables for Frontend
 
@@ -209,11 +228,20 @@ Click **"Environment Variables"** section and add:
 - Check that backend URL is correct (no typos)
 - Redeploy frontend after fixing environment variable
 
-**Problem:** Build fails  
+**Problem:** Build fails with "vite: command not found"  
+**Solution:**
+- **This means Root Directory is NOT set correctly!**
+- Go to Project Settings → General → Root Directory
+- Make sure it's set to `frontend` (not `/` or empty)
+- Save settings and redeploy
+- The Root Directory should be exactly `frontend` (no slashes)
+
+**Problem:** Build fails with other errors  
 **Solution:**
 - Check that `frontend/package.json` exists
-- Verify Root Directory is set to `frontend`
+- Verify Root Directory is set to `frontend` in project settings
 - Check build logs for specific errors
+- Make sure all dependencies are in `package.json`
 
 **Problem:** Frontend shows but can't connect to backend  
 **Solution:**
