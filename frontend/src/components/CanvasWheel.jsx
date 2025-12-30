@@ -142,12 +142,14 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
                     centerImageLoadedRef.current.naturalWidth > 0) {
                     try {
                         let imageRadius
+                        // Desktop gets slightly larger image
+                        const desktopMultiplier = isMobile ? 1.0 : 1.1
                         if (centerImageSize === 'S') {
-                            imageRadius = hubRadius * 0.7
+                            imageRadius = hubRadius * 0.75 * desktopMultiplier
                         } else if (centerImageSize === 'L') {
-                            imageRadius = hubRadius * 1.3
+                            imageRadius = hubRadius * 1.45 * desktopMultiplier
                         } else {
-                            imageRadius = hubRadius * 1.0
+                            imageRadius = hubRadius * 1.15 * desktopMultiplier
                         }
                         
                         staticCtx.save()
@@ -161,6 +163,15 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
                             imageRadius * 2, 
                             imageRadius * 2
                         )
+                        staticCtx.restore()
+                        
+                        // Draw thin white border around the image
+                        staticCtx.save()
+                        staticCtx.beginPath()
+                        staticCtx.arc(centerX, centerY, imageRadius, 0, 2 * Math.PI)
+                        staticCtx.strokeStyle = 'white'
+                        staticCtx.lineWidth = 1.5
+                        staticCtx.stroke()
                         staticCtx.restore()
                     } catch (error) {
                         console.error('Error drawing center image:', error)
@@ -334,12 +345,11 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
             // Draw static wheel with rotation
             // The rotation value represents clockwise rotation in degrees
             // Canvas rotate() rotates the coordinate system counter-clockwise for positive angles
-            // This makes objects drawn appear to rotate clockwise, which matches the calculation
-            // The calculation assumes: "When wheel rotates clockwise by R, what was at angle A is now at (A - R)"
-            // After rotating coordinate system counter-clockwise by R, a point originally at angle A appears at (A - R)
+            // To make the wheel appear to rotate clockwise, we rotate the coordinate system counter-clockwise
+            // This means we use a positive angle (no negation needed)
             ctx.save()
             ctx.translate(centerX, centerY)
-            ctx.rotate((rotationRef.current * Math.PI) / 180)
+            ctx.rotate((rotationRef.current * Math.PI) / 180) // Positive angle for clockwise wheel rotation
             ctx.translate(-centerX, -centerY)
             
             // Draw the static wheel from offscreen canvas
@@ -372,12 +382,14 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
                     const hubRadius = isMobile ? 35 : 70
                     
                     let imageRadius
+                    // Desktop gets slightly larger image
+                    const desktopMultiplier = isMobile ? 1.0 : 1.1
                     if (centerImageSize === 'S') {
-                        imageRadius = hubRadius * 0.7
+                        imageRadius = hubRadius * 0.75 * desktopMultiplier
                     } else if (centerImageSize === 'L') {
-                        imageRadius = hubRadius * 1.3
+                        imageRadius = hubRadius * 1.45 * desktopMultiplier
                     } else {
-                        imageRadius = hubRadius * 1.0
+                        imageRadius = hubRadius * 1.15 * desktopMultiplier
                     }
                     
                     ctx.save()
@@ -391,6 +403,15 @@ const CanvasWheel = memo(({ names, colors, rotation, width = 800, height = 800, 
                         imageRadius * 2, 
                         imageRadius * 2
                     )
+                    ctx.restore()
+                    
+                    // Draw thin white border around the image
+                    ctx.save()
+                    ctx.beginPath()
+                    ctx.arc(centerX, centerY, imageRadius, 0, 2 * Math.PI)
+                    ctx.strokeStyle = 'white'
+                    ctx.lineWidth = 1.5
+                    ctx.stroke()
                     ctx.restore()
                 } catch (error) {
                     console.error('Error drawing center image:', error)

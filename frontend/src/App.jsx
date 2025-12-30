@@ -369,8 +369,8 @@ function App() {
     const startRotation = finalRotation
     let lastTickRotation = startRotation // Track last rotation for sound sync
 
-    // Duration: 10000ms (10s) - Much slower, organic and elegant spin
-    const duration = 10000
+    // Duration: 15000ms (15s) - Smooth 15 second spin
+    const duration = 15000
 
     // Calculate total rotation: 3-5 full rotations (1080-1800 degrees) - Reduced for slower, more organic feel
     const minRotations = 3
@@ -826,36 +826,48 @@ function App() {
 
     const startTime = performance.now()
 
-    // Custom Easing: "Power Start + Friction Stop"
-    // Goals: 
+    // Custom Easing: Multi-phase smooth spin
+    // Phases:
+    // 0-2s (0-0.133): Slow start - gentle acceleration
+    // 2-4s (0.133-0.267): Transition to medium fast
+    // 4-9s (0.267-0.6): Medium fast - steady speed with slight acceleration
+    // 9-15s (0.6-1.0): Gradual slowdown - smooth deceleration over last 6 seconds
     const ease = (t) => {
-      // Matched Derivative Piecewise Easing
-      // Guarantees smooth velocity transition from Acceleration to Deceleration.
+      // Normalize time to 0-1 range (t is already 0-1)
+      const totalTime = 15 // seconds
+      const phase1End = 2 / totalTime   // 0.133 - Slow start phase
+      const phase2End = 4 / totalTime   // 0.267 - Transition phase
+      const phase3End = 9 / totalTime   // 0.6 - Medium fast phase
+      // phase4End = 1.0 - Gradual slowdown phase
 
-      // Configuration - Very slow, organic and natural motion
-      const t1 = 0.30 // Acceleration for 30% of time (longer, gentler acceleration phase)
-      const p1 = 2.0  // Very gentle acceleration (smooth, organic start)
-      const p2 = 7    // Ultra-soft deceleration (very smooth, natural final slowdown)
-
-      // Calculate split point (Y) where curves meet to ensure velocity continuity
-      // Derivation: V1(t1) = V2(t1) -> solve for Y
-      // Y represents the portion of distance covered during the Deceleration phase (relative to 1)
-      const Y = (p1 * (1 - t1)) / (p2 * t1 + p1 * (1 - t1))
-
-      // X_Split is the distance covered at time t1
-      const x_split = 1 - Y
-
-      // Scaling coefficients
-      const k = x_split / Math.pow(t1, p1)      // Accel scaler
-      const A = Y / Math.pow(1 - t1, p2)        // Decel scaler
-
-      if (t < t1) {
-        // Phase 1: Acceleration
-        return k * Math.pow(t, p1)
+      if (t < phase1End) {
+        // Phase 1: Slow start (0-2s) - Gentle acceleration
+        const phaseProgress = t / phase1End
+        // Slow, smooth acceleration curve
+        return 0.08 * Math.pow(phaseProgress, 2.5)
+      } else if (t < phase2End) {
+        // Phase 2: Transition (2-4s) - Building up to medium fast
+        const phaseProgress = (t - phase1End) / (phase2End - phase1End)
+        const startValue = 0.08
+        const endValue = 0.40
+        // Smooth transition with easing
+        return startValue + (endValue - startValue) * (1 - Math.pow(1 - phaseProgress, 1.5))
+      } else if (t < phase3End) {
+        // Phase 3: Medium fast (4-9s) - Steady speed with very slight acceleration
+        // Use a more linear approach with minimal curve for smooth, consistent behavior
+        const phaseProgress = (t - phase2End) / (phase3End - phase2End)
+        const startValue = 0.40
+        const endValue = 0.82
+        // Nearly linear with very slight ease-in for natural feel
+        // Using exponent close to 1.0 for steady speed
+        return startValue + (endValue - startValue) * Math.pow(phaseProgress, 0.95)
       } else {
-        // Phase 2: Deceleration
-        // Standard decay curve shifted to match peak velocity
-        return 1 - A * Math.pow(1 - t, p2)
+        // Phase 4: Gradual slowdown (9-15s, last 6 seconds)
+        const phaseProgress = (t - phase3End) / (1 - phase3End)
+        const startValue = 0.82
+        const endValue = 1.0
+        // Smooth deceleration curve
+        return startValue + (endValue - startValue) * (1 - Math.pow(1 - phaseProgress, 3))
       }
     }
 

@@ -3,7 +3,6 @@ import express from 'express'
 import cors from 'cors'
 import multer from 'multer'
 import xlsx from 'xlsx'
-import fs from 'fs'
 import path from 'path'
 import { fileURLToPath } from 'url'
 import bcrypt from 'bcryptjs'
@@ -17,7 +16,7 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// Connect to MongoDB
+// Connect to PostgreSQL
 connectDB()
 
 // Middleware - CORS configuration
@@ -68,33 +67,55 @@ const imageToBase64 = (buffer, mimetype) => {
   }
 }
 
-// Helper function to convert MongoDB document to API format
-const formatSpinFile = (doc) => {
-  const file = doc.toObject ? doc.toObject() : doc
+// Helper function to convert PostgreSQL row to API format
+const formatSpinFile = (row) => {
+  // Parse json_content if it's a string (JSONB from PostgreSQL)
+  let jsonContent = row.json_content
+  if (typeof jsonContent === 'string') {
+    try {
+      jsonContent = JSON.parse(jsonContent)
+    } catch (e) {
+      jsonContent = []
+    }
+  }
+  
   return {
-    id: file._id.toString(),
-    filename: file.filename,
-    json_content: file.json_content,
-    picture: file.picture,
-    ticketNumber: file.ticketNumber || '',
-    active: file.active !== false,
-    fixedWinnerTicket: file.fixedWinnerTicket || null,
-    createdAt: file.createdAt || file.createdAt,
-    updatedAt: file.updatedAt || file.updatedAt
+    id: row.id.toString(),
+    filename: row.filename,
+    json_content: jsonContent || [],
+    picture: row.picture,
+    ticketNumber: row.ticket_number || '',
+    active: row.active !== false,
+    fixedWinnerTicket: row.fixed_winner_ticket || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   }
 }
 
 // API Routes
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Backend API Server', 
+    status: 'running',
+    database: 'PostgreSQL',
+    endpoints: {
+      health: '/api/health',
+      spins: '/api/spins/*'
+    }
+  })
+})
+
 // Health check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Backend is running', database: 'MongoDB' })
+  res.json({ status: 'ok', message: 'Backend is running', database: 'PostgreSQL' })
 })
 
 // Get list of active spin files (for users)
 app.get('/api/spins/list/', async (req, res) => {
   try {
-    const files = await SpinFile.find({ active: { $ne: false } }).sort({ createdAt: -1 })
+    const files = await SpinFile.find({ active: true })
     const formattedFiles = files.map(formatSpinFile)
     res.json(formattedFiles)
   } catch (error) {
@@ -106,7 +127,7 @@ app.get('/api/spins/list/', async (req, res) => {
 // Get admin list of all spin files
 app.get('/api/spins/admin-list/', async (req, res) => {
   try {
-    const files = await SpinFile.find().sort({ createdAt: -1 })
+    const files = await SpinFile.find()
     const formattedFiles = files.map(formatSpinFile)
     res.json(formattedFiles)
   } catch (error) {
@@ -118,8 +139,8 @@ app.get('/api/spins/admin-list/', async (req, res) => {
 // Get filenames only
 app.get('/api/spins/filenames/', async (req, res) => {
   try {
-    const files = await SpinFile.find().select('filename').sort({ createdAt: -1 })
-    const filenames = files.map(f => ({ id: f._id.toString(), filename: f.filename }))
+    const files = await SpinFile.select(['id', 'filename'])
+    const filenames = files.map(f => ({ id: f.id.toString(), filename: f.filename }))
     res.json(filenames)
   } catch (error) {
     console.error('Error getting filenames:', error)
@@ -151,7 +172,7 @@ app.post('/api/spins/upload/', upload.fields([
       pictureBase64 = imageToBase64(pictureFile.buffer, pictureFile.mimetype)
     }
 
-    // Create file in MongoDB
+    // Create file in PostgreSQL
     const spinFile = await SpinFile.create({
       filename: filename.trim(),
       json_content: jsonContent,
@@ -177,13 +198,34 @@ app.post('/api/spins/spin/:id/', async (req, res) => {
       return res.status(404).json({ error: 'File not found' })
     }
 
-    if (!file.json_content || !Array.isArray(file.json_content) || file.json_content.length === 0) {
+    // Parse json_content if it's a string (JSONB from PostgreSQL)
+    let jsonContent = file.json_content
+    if (typeof jsonContent === 'string') {
+      try {
+        jsonContent = JSON.parse(jsonContent)
+      } catch (e) {
+        jsonContent = []
+      }
+    }
+
+    if (!jsonContent || !Array.isArray(jsonContent) || jsonContent.length === 0) {
       return res.status(400).json({ error: 'No entries available' })
     }
 
+    // Check for fixed winner
+    if (file.fixed_winner_ticket) {
+      const fixedIndex = jsonContent.findIndex(entry => {
+        const ticket = entry.ticket || entry.Ticket || entry.ticketNumber || entry.ticket_number
+        return ticket && ticket.toString() === file.fixed_winner_ticket.toString()
+      })
+      if (fixedIndex !== -1) {
+        return res.json({ winner: jsonContent[fixedIndex], index: fixedIndex })
+      }
+    }
+
     // Get random winner
-    const randomIndex = Math.floor(Math.random() * file.json_content.length)
-    const winner = file.json_content[randomIndex]
+    const randomIndex = Math.floor(Math.random() * jsonContent.length)
+    const winner = jsonContent[randomIndex]
 
     res.json({ winner, index: randomIndex })
   } catch (error) {
@@ -219,10 +261,10 @@ app.patch('/api/spins/toggle-active/:id/', async (req, res) => {
       return res.status(404).json({ error: 'File not found' })
     }
 
-    file.active = !(file.active !== false)
-    await file.save()
+    const newActiveStatus = !(file.active !== false)
+    const updatedFile = await SpinFile.findByIdAndUpdate(id, { active: newActiveStatus })
 
-    res.json(formatSpinFile(file))
+    res.json(formatSpinFile(updatedFile))
   } catch (error) {
     console.error('Error toggling active status:', error)
     res.status(500).json({ error: 'Failed to toggle active status' })
@@ -292,8 +334,7 @@ app.post('/api/spins/set-fixed-winner/:id/', async (req, res) => {
       return res.status(404).json({ error: 'File not found' })
     }
 
-    file.fixedWinnerTicket = rigged_ticket
-    await file.save()
+    await SpinFile.findByIdAndUpdate(id, { fixedWinnerTicket: rigged_ticket })
 
     res.json({ success: true, message: 'Fixed winner set' })
   } catch (error) {
@@ -309,6 +350,6 @@ export default app
 if (process.env.VERCEL !== '1') {
   app.listen(PORT, () => {
     console.log(`🚀 Backend server running on http://localhost:${PORT}`)
-    console.log(`📦 Using MongoDB database`)
+    console.log(`📦 Using PostgreSQL database`)
   })
 }
