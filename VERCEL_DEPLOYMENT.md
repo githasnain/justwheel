@@ -73,9 +73,14 @@ Click **"Environment Variables"** section and add these:
 
 | Variable Name | Value |
 |---------------|-------|
-| `DATABASE_URL` | `postgresql://neondb_owner:npg_XhSQ5rlF7VsN@ep-withered-dream-adupxyp9-pooler.c-2.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require` |
+| `DATABASE_URL` | `postgresql://YOUR_DB_USER:YOUR_DB_PASSWORD@YOUR_DB_HOST/YOUR_DB_NAME?sslmode=require&channel_binding=require` |
 | `NODE_ENV` | `production` |
 | `PORT` | `3001` (optional, Vercel will set this automatically) |
+
+**⚠️ SECURITY NOTE:** 
+- Replace `YOUR_DB_USER`, `YOUR_DB_PASSWORD`, `YOUR_DB_HOST`, and `YOUR_DB_NAME` with your actual database credentials
+- **NEVER commit your actual database connection string to GitHub!**
+- Get your connection string from your Neon dashboard or database provider
 
 **Important:** 
 - Make sure `DATABASE_URL` is exactly as shown above
