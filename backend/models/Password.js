@@ -1,10 +1,16 @@
-import { pool } from '../config/database.js'
+import { getDatabasePool } from '../config/database.js'
 import bcrypt from 'bcryptjs'
+
+// Helper to get pool safely
+const getPool = async () => {
+  return await getDatabasePool()
+}
 
 const Password = {
   // Get password (only one should exist)
   async getPassword() {
     try {
+      const pool = await getPool()
       const result = await pool.query('SELECT * FROM passwords ORDER BY id LIMIT 1')
       let password = result.rows[0]
       
@@ -28,6 +34,7 @@ const Password = {
   // Update password
   async updatePassword(newHash) {
     try {
+      const pool = await getPool()
       const result = await pool.query('SELECT * FROM passwords ORDER BY id LIMIT 1')
       let password = result.rows[0]
       

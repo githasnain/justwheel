@@ -1,9 +1,15 @@
-import { pool } from '../config/database.js'
+import { getDatabasePool } from '../config/database.js'
+
+// Helper to get pool safely (ensures connection)
+const getPool = async () => {
+  return await getDatabasePool()
+}
 
 const SpinFile = {
   // Find all spin files
   async find(query = {}) {
     try {
+      const pool = await getPool()
       let sql = 'SELECT * FROM spinfiles WHERE 1=1'
       const params = []
       
@@ -25,6 +31,7 @@ const SpinFile = {
   // Find by ID
   async findById(id) {
     try {
+      const pool = await getPool()
       const result = await pool.query('SELECT * FROM spinfiles WHERE id = $1', [id])
       return result.rows[0] || null
     } catch (error) {
@@ -36,6 +43,7 @@ const SpinFile = {
   // Create new spin file
   async create(data) {
     try {
+      const pool = await getPool()
       const { filename, json_content, picture, ticketNumber, active, fixedWinnerTicket } = data
       const result = await pool.query(
         `INSERT INTO spinfiles (filename, json_content, picture, ticket_number, active, fixed_winner_ticket)
@@ -60,6 +68,7 @@ const SpinFile = {
   // Update spin file
   async findByIdAndUpdate(id, update) {
     try {
+      const pool = await getPool()
       const updates = []
       const values = []
       let paramCount = 1
@@ -94,6 +103,7 @@ const SpinFile = {
   // Delete spin file
   async findByIdAndDelete(id) {
     try {
+      const pool = await getPool()
       const result = await pool.query('DELETE FROM spinfiles WHERE id = $1 RETURNING *', [id])
       return result.rows[0] || null
     } catch (error) {
@@ -105,6 +115,7 @@ const SpinFile = {
   // Select specific fields
   async select(fields, query = {}) {
     try {
+      const pool = await getPool()
       let sql = `SELECT ${fields.join(', ')} FROM spinfiles WHERE 1=1`
       const params = []
       

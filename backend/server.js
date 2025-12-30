@@ -16,8 +16,20 @@ const __dirname = path.dirname(__filename)
 const app = express()
 const PORT = process.env.PORT || 3001
 
-// Connect to PostgreSQL
-connectDB()
+// Process-level error handlers (prevent function crashes)
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason)
+  // Don't exit - let Vercel handle it
+})
+
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error)
+  // Don't exit - let Vercel handle it
+})
+
+// Database connection is now handled lazily by models
+// Connection happens on first request with automatic retries
+// This is optimal for Vercel serverless functions with free-tier databases
 
 // Middleware - CORS configuration
 app.use(cors({
@@ -32,6 +44,26 @@ app.options('*', cors())
 
 app.use(express.json())
 app.use(express.urlencoded({ extended: true }))
+
+// Database connection middleware (optional - models handle connection themselves)
+// This provides early connection for better performance
+app.use(async (req, res, next) => {
+  // Skip connection check for health and root endpoints (faster response)
+  if (req.path === '/api/health' || req.path === '/' || req.path === '/api') {
+    return next()
+  }
+  
+  try {
+    const { getDatabasePool } = await import('./config/database.js')
+    await getDatabasePool() // Ensure connection is ready
+    next()
+  } catch (error) {
+    console.error('Database connection error in middleware:', error.message)
+    // Don't block - let the route handler deal with it
+    // Models will retry connection automatically
+    next()
+  }
+})
 
 // Configure multer for file uploads
 // Use memory storage for Vercel compatibility (serverless functions)
@@ -107,9 +139,56 @@ app.get('/', (req, res) => {
   })
 })
 
+// API root route (handles "Cannot GET /api" error)
+app.get('/api', (req, res) => {
+  res.json({ 
+    message: 'API Server', 
+    status: 'running',
+    database: 'PostgreSQL',
+    endpoints: {
+      health: '/api/health',
+      spins: {
+        list: '/api/spins/list/',
+        adminList: '/api/spins/admin-list/',
+        filenames: '/api/spins/filenames/',
+        upload: 'POST /api/spins/upload/',
+        spin: 'POST /api/spins/spin/:id/',
+        delete: 'DELETE /api/spins/delete/:id/',
+        toggleActive: 'PATCH /api/spins/toggle-active/:id/',
+        setFixedWinner: 'POST /api/spins/set-fixed-winner/:id/'
+      },
+      auth: {
+        checkPassword: 'POST /api/spins/check-password/',
+        updatePassword: 'POST /api/spins/update-password/'
+      }
+    }
+  })
+})
+
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Backend is running', database: 'PostgreSQL' })
+app.get('/api/health', async (req, res) => {
+  try {
+    // Test database connection
+    const { getDatabasePool } = await import('./config/database.js')
+    const pool = await getDatabasePool()
+    const client = await pool.connect()
+    client.release()
+    
+    res.json({ 
+      status: 'ok', 
+      message: 'Backend is running', 
+      database: 'PostgreSQL',
+      connected: true
+    })
+  } catch (error) {
+    res.status(503).json({ 
+      status: 'error', 
+      message: 'Backend is running but database connection failed', 
+      database: 'PostgreSQL',
+      connected: false,
+      error: error.message
+    })
+  }
 })
 
 // Get list of active spin files (for users)
@@ -120,7 +199,16 @@ app.get('/api/spins/list/', async (req, res) => {
     res.json(formattedFiles)
   } catch (error) {
     console.error('Error getting spin files:', error)
-    res.status(500).json({ error: 'Failed to get spin files' })
+    // Check if it's a database connection error
+    if (error.message && (error.message.includes('timeout') || error.message.includes('connection'))) {
+      res.status(503).json({ 
+        error: 'Database connection failed', 
+        message: 'Please try again in a moment',
+        retry: true
+      })
+    } else {
+      res.status(500).json({ error: 'Failed to get spin files', message: error.message })
+    }
   }
 })
 
@@ -132,7 +220,15 @@ app.get('/api/spins/admin-list/', async (req, res) => {
     res.json(formattedFiles)
   } catch (error) {
     console.error('Error getting admin spin files:', error)
-    res.status(500).json({ error: 'Failed to get admin spin files' })
+    if (error.message && (error.message.includes('timeout') || error.message.includes('connection'))) {
+      res.status(503).json({ 
+        error: 'Database connection failed', 
+        message: 'Please try again in a moment',
+        retry: true
+      })
+    } else {
+      res.status(500).json({ error: 'Failed to get admin spin files', message: error.message })
+    }
   }
 })
 
@@ -341,6 +437,30 @@ app.post('/api/spins/set-fixed-winner/:id/', async (req, res) => {
     console.error('Error setting fixed winner:', error)
     res.status(500).json({ error: 'Failed to set fixed winner' })
   }
+})
+
+// Global error handler (prevents function crashes)
+app.use((err, req, res, next) => {
+  console.error('Unhandled error:', err)
+  res.status(err.status || 500).json({
+    error: err.message || 'Internal server error',
+    status: 'error'
+  })
+})
+
+// 404 handler for undefined routes
+app.use((req, res) => {
+  res.status(404).json({
+    error: 'Route not found',
+    path: req.path,
+    method: req.method,
+    availableEndpoints: {
+      root: '/',
+      api: '/api',
+      health: '/api/health',
+      spins: '/api/spins/*'
+    }
+  })
 })
 
 // Export for Vercel serverless functions
