@@ -826,49 +826,17 @@ function App() {
 
     const startTime = performance.now()
 
-    // Custom Easing: Multi-phase smooth spin
-    // Phases:
-    // 0-2s (0-0.133): Slow start - gentle acceleration
-    // 2-4s (0.133-0.267): Transition to medium fast
-    // 4-9s (0.267-0.6): Medium fast - steady speed with slight acceleration
-    // 9-15s (0.6-1.0): Gradual slowdown - smooth deceleration over last 6 seconds
+    // Natural Smooth Easing: Quintic ease-out for ultra-smooth natural wheel physics
+    // Mimics real-world wheel behavior - starts with momentum and smoothly decelerates
+    // This creates a natural, organic spinning motion without artificial phases or jerks
     const ease = (t) => {
-      // Normalize time to 0-1 range (t is already 0-1)
-      const totalTime = 15 // seconds
-      const phase1End = 2 / totalTime   // 0.133 - Slow start phase
-      const phase2End = 4 / totalTime   // 0.267 - Transition phase
-      const phase3End = 9 / totalTime   // 0.6 - Medium fast phase
-      // phase4End = 1.0 - Gradual slowdown phase
-
-      if (t < phase1End) {
-        // Phase 1: Slow start (0-2s) - Gentle acceleration
-        const phaseProgress = t / phase1End
-        // Slow, smooth acceleration curve
-        return 0.08 * Math.pow(phaseProgress, 2.5)
-      } else if (t < phase2End) {
-        // Phase 2: Transition (2-4s) - Building up to medium fast
-        const phaseProgress = (t - phase1End) / (phase2End - phase1End)
-        const startValue = 0.08
-        const endValue = 0.40
-        // Smooth transition with easing
-        return startValue + (endValue - startValue) * (1 - Math.pow(1 - phaseProgress, 1.5))
-      } else if (t < phase3End) {
-        // Phase 3: Medium fast (4-9s) - Steady speed with very slight acceleration
-        // Use a more linear approach with minimal curve for smooth, consistent behavior
-        const phaseProgress = (t - phase2End) / (phase3End - phase2End)
-        const startValue = 0.40
-        const endValue = 0.82
-        // Nearly linear with very slight ease-in for natural feel
-        // Using exponent close to 1.0 for steady speed
-        return startValue + (endValue - startValue) * Math.pow(phaseProgress, 0.95)
-      } else {
-        // Phase 4: Gradual slowdown (9-15s, last 6 seconds)
-        const phaseProgress = (t - phase3End) / (1 - phase3End)
-        const startValue = 0.82
-        const endValue = 1.0
-        // Smooth deceleration curve
-        return startValue + (endValue - startValue) * (1 - Math.pow(1 - phaseProgress, 3))
-      }
+      // Quintic ease-out: 1 - (1 - t)^5
+      // Creates ultra-smooth deceleration that feels natural and fluid
+      // Starts with good momentum and gracefully slows to a stop
+      const oneMinusT = 1 - t
+      const oneMinusT2 = oneMinusT * oneMinusT
+      const oneMinusT4 = oneMinusT2 * oneMinusT2
+      return 1 - (oneMinusT4 * oneMinusT)
     }
 
     const animate = () => {
